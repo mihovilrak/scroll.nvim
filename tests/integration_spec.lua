@@ -4,7 +4,9 @@ local t = dofile("tests/harness.lua")
 
 vim.o.lines, vim.o.columns = 40, 120
 vim.o.laststatus, vim.o.swapfile = 2, false
-vim.cmd("redraw") -- flush the resize; see minimap_spec.lua
+-- Flush the resize before any window is split: headless Nvim can crash when a
+-- split follows a resize with no redraw in between (see minimap_spec.lua).
+vim.cmd("redraw")
 
 local scroll = require("scroll")
 local render = require("scroll.render")

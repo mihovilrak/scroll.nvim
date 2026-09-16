@@ -187,7 +187,7 @@ no flicker.
 The interesting problem is measuring a document cheaply enough to do it on every scroll event.
 
 **Vertically**, `nvim_win_text_height` is the only call that correctly accounts for folds, wrapping,
-virtual lines, diff filler and `'smoothscroll'` — but measuring from the start of the buffer is
+virtual lines, diff filler and `'smoothscroll'`, but measuring from the start of the buffer is
 O(topline), about 14 ms halfway down a 100k-line wrapped buffer. Instead the plugin exploits an
 additivity identity (`start_vcol = 0` makes adjacent ranges telescope rather than double-count) to
 maintain the offset incrementally, moving it by the distance actually scrolled. That is **0.024 ms
@@ -196,7 +196,7 @@ every step. When the buffer renders one row per line, the plugin detects that by
 `total == line_count` and skips the measurement entirely.
 
 **Horizontally**, the expensive quantity is the widest line. A full `strdisplaywidth` scan of 100k
-lines costs ~73 ms, so it runs in chunks off a timer while the visible lines — always cheap — are
+lines costs ~73 ms, so it runs in chunks off a timer while the visible lines (always cheap) are
 measured synchronously, meaning the bar is never blank while a scan is in flight. The cached width
 is only published when a scan completes, which is what stops the thumb jittering as you type.
 
@@ -226,16 +226,16 @@ make test
 
 Six suites, all headless and independent of your config:
 
-- `geometry_spec` — the pure thumb math, including an exhaustive sweep asserting the thumb never
+- `geometry_spec`: the pure thumb math, including an exhaustive sweep asserting the thumb never
   leaves its track and never inverts.
-- `measure_spec` — incremental measurement against ground truth on wrapped and folded buffers, plus
+- `measure_spec`: incremental measurement against ground truth on wrapped and folded buffers, plus
   a performance regression guard.
-- `width_spec` — the document-width cache and its background scan.
-- `integration_spec` — real windows and floats: splits sharing a buffer, winbar offsets, gutters,
+- `width_spec`: the document-width cache and its background scan.
+- `integration_spec`: real windows and floats: splits sharing a buffer, winbar offsets, gutters,
   folds, floats, excluded buffers.
-- `ruler_spec` — mark placement, priority and lanes, each source (the git fallback runs against a
+- `ruler_spec`: mark placement, priority and lanes, each source (the git fallback runs against a
   throwaway repository), fold changes, and a guard that scrolling does not re-place marks.
-- `minimap_spec` — braille encoding, map layout, the float and its viewport and git gutter, and
+- `minimap_spec`: braille encoding, map layout, the float and its viewport and git gutter, and
   that drag-scrolling keeps its position under any `'scrolloff'`.
 
 Inside a Neovim `:terminal`, `$NVIM` is the server address, so the Makefile uses `NVIM_BIN` to pick

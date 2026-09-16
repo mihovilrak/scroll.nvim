@@ -2,12 +2,10 @@
 package.path = "lua/?.lua;lua/?/init.lua;" .. package.path
 local t = dofile("tests/harness.lua")
 
-vim.o.lines, vim.o.columns = 40, 120
+-- The screen is left at the headless default of 80x24. Resizing it and then
+-- splitting windows crashes headless Nvim itself (0.11.6 aborts with a double
+-- free; nightly fails an assertion in grid.c), with or without this plugin.
 vim.o.laststatus, vim.o.swapfile = 2, false
--- Flush the resize now. Headless Nvim 0.11.6 aborts ("double free") when a
--- window layout change follows a `lines`/`columns` change with no redraw in
--- between, and the first redraw comes later -- even with no plugin loaded.
-vim.cmd("redraw")
 
 dofile("plugin/scroll.lua")
 local scroll = require("scroll")
@@ -40,7 +38,7 @@ local function braille(bits)
   return vim.fn.nr2char(0x2800 + bits)
 end
 
-scroll.setup({ visibility = "always", mouse = false, minimap = { enabled = true } })
+scroll.setup({ visibility = "always", mouse = false, minimap = { enabled = true, min_window_width = 50 } })
 
 t.describe("encode: dots follow the text", function()
   t.eq(minimap.encode({ "ab" }, 1, 1, 8), braille(0x01 + 0x08), "two chars light the top row of one cell")
@@ -173,9 +171,9 @@ t.describe("narrow windows get no minimap", function()
   local _, win = fill(500)
   vim.cmd("vsplit")
   local other = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_width(win, 60)
+  vim.api.nvim_win_set_width(win, 40)
   scroll.refresh()
-  t.eq(float_of(win, "minimap"), nil, "60 columns is below min_window_width")
+  t.eq(float_of(win, "minimap"), nil, "40 columns is below min_window_width")
   vim.api.nvim_win_close(other, true)
   scroll.refresh()
   t.check(float_of(win, "minimap") ~= nil, "widened to full width, it gets one")
