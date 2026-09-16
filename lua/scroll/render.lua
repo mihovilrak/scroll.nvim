@@ -2,14 +2,16 @@
 local Bar = require("scroll.bar")
 local config = require("scroll.config")
 local geometry = require("scroll.geometry")
+local highlight = require("scroll.highlight")
 local measure = require("scroll.measure")
+local minimap = require("scroll.minimap")
 local ruler = require("scroll.ruler")
 local util = require("scroll.util")
 local width = require("scroll.width")
 
 local M = {}
 
---- @type table<integer, { vertical: table?, horizontal: table? }>
+--- @type table<integer, { vertical: table?, horizontal: table?, minimap: table? }>
 local bars = {}
 
 --- Which bar the pointer is currently over, so it can be drawn highlighted.
@@ -28,7 +30,7 @@ end
 --- Geometry for both bars, or nil where that bar should not be shown.
 --- Kept separate from drawing so tests can assert placement without floats.
 --- @param win integer
---- @return table  `{ info, vertical = {pos,size}?, horizontal = {pos,size,textoff,track}? }`
+--- @return table  `{ info, vertical = {pos,size}?, horizontal = {pos,size,textoff,track}?, minimap? }`
 function M.compute(win)
   local opts = config.options
   local info = vim.fn.getwininfo(win)[1]
@@ -36,6 +38,8 @@ function M.compute(win)
   if not info then
     return result
   end
+
+  result.minimap = minimap.compute(win, info)
 
   if opts.vertical.enabled then
     local m = measure.vertical(win)
@@ -64,9 +68,12 @@ function M.compute(win)
     end)
     local m = measure.horizontal(win, doc_w)
     if m then
-      -- Leave the bottom-right corner to the vertical bar rather than letting
-      -- the two overlap there.
+      -- Leave the bottom-right corner to the vertical bar (and the minimap)
+      -- rather than letting them overlap there.
       local track = m.page - (result.vertical and opts.vertical.width or 0)
+      if result.minimap then
+        track = math.min(track, result.minimap.col - m.textoff)
+      end
       local g = geometry.thumb({
         track = track,
         total = m.total,
@@ -110,7 +117,7 @@ local function draw_vertical(win, entry, computed, hovered)
     return
   end
 
-  local marks, marks_sig = ruler.cells(win, info.height, v.total, marks_updated)
+  local marks, content_sig = ruler.cells(win, info.height, v.total, marks_updated)
   entry.vertical = entry.vertical or Bar.new()
   entry.vertical:update(win, {
     orientation = "vertical",
@@ -127,7 +134,7 @@ local function draw_vertical(win, entry, computed, hovered)
     zindex = opts.zindex,
     hovered = hovered,
     marks = marks,
-    marks_sig = marks_sig,
+    content_sig = content_sig,
   })
 end
 
@@ -164,6 +171,28 @@ local function draw_horizontal(win, entry, computed, hovered)
 end
 
 --- @param win integer
+--- @param entry table  the window's bars
+--- @param computed table  from `compute`
+local function draw_minimap(win, entry, computed)
+  local map = computed.minimap
+  if not map then
+    if entry.minimap then
+      entry.minimap:destroy()
+      entry.minimap = nil
+    end
+    return
+  end
+  entry.minimap = entry.minimap or Bar.new(highlight.MINIMAP)
+  entry.minimap:update(win, minimap.bar_opts(win, computed.info, map, marks_updated))
+end
+
+--- Whether the bar with this key is subject to hiding. The minimap stays up unless
+--- `minimap.autohide` is set.
+local function hides(orientation)
+  return orientation ~= "minimap" or config.options.minimap.autohide
+end
+
+--- @param win integer
 --- @param quiet boolean|nil  only redraw bars that are already showing
 function M.refresh(win, quiet)
   if not util.is_eligible(win) then
@@ -175,7 +204,8 @@ function M.refresh(win, quiet)
   -- A quiet refresh leaves hidden (or never drawn) bars alone.
   local skip_vertical = quiet and (not entry.vertical or entry.vertical.hidden)
   local skip_horizontal = quiet and (not entry.horizontal or entry.horizontal.hidden)
-  if skip_vertical and skip_horizontal then
+  local skip_minimap = quiet and hides("minimap") and (not entry.minimap or entry.minimap.hidden)
+  if skip_vertical and skip_horizontal and skip_minimap then
     return
   end
   local computed = M.compute(win)
@@ -192,6 +222,9 @@ function M.refresh(win, quiet)
   if not skip_horizontal then
     draw_horizontal(win, entry, computed, hovered_orientation == "horizontal")
   end
+  if not skip_minimap then
+    draw_minimap(win, entry, computed)
+  end
 end
 
 --- Refresh every ordinary window in the current tabpage.
@@ -207,11 +240,10 @@ end
 function M.hide(win)
   local entry = bars[win]
   if entry then
-    if entry.vertical then
-      entry.vertical:hide()
-    end
-    if entry.horizontal then
-      entry.horizontal:hide()
+    for orientation, bar in pairs(entry) do
+      if hides(orientation) then
+        bar:hide()
+      end
     end
   end
 end
@@ -227,11 +259,8 @@ end
 function M.clear(win)
   local entry = bars[win]
   if entry then
-    if entry.vertical then
-      entry.vertical:destroy()
-    end
-    if entry.horizontal then
-      entry.horizontal:destroy()
+    for _, bar in pairs(entry) do
+      bar:destroy()
     end
     bars[win] = nil
   end

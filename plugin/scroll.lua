@@ -20,3 +20,7 @@ end, { desc = "Disable scroll.nvim scrollbars" })
 vim.api.nvim_create_user_command("ScrollRefresh", function()
   require("scroll").refresh()
 end, { desc = "Redraw scroll.nvim scrollbars now" })
+
+vim.api.nvim_create_user_command("ScrollMinimapToggle", function()
+  require("scroll").toggle_minimap()
+end, { desc = "Toggle the scroll.nvim minimap" })

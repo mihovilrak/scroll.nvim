@@ -4,6 +4,7 @@ local t = dofile("tests/harness.lua")
 
 vim.o.lines, vim.o.columns = 40, 120
 vim.o.laststatus, vim.o.swapfile = 2, false
+vim.cmd("redraw") -- flush the resize; see minimap_spec.lua
 
 local scroll = require("scroll")
 local render = require("scroll.render")

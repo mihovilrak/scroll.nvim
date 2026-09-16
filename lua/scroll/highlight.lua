@@ -10,6 +10,9 @@ M.TRACK = "ScrollTrack"
 M.THUMB = "ScrollThumb"
 M.THUMB_HOVER = "ScrollThumbHover"
 
+M.MINIMAP = "ScrollMinimap"
+M.MINIMAP_VIEWPORT = "ScrollMinimapViewport"
+
 M.MARK_ERROR = "ScrollMarkError"
 M.MARK_WARN = "ScrollMarkWarn"
 M.MARK_INFO = "ScrollMarkInfo"
@@ -23,6 +26,8 @@ local links = {
   [M.TRACK] = "PmenuSbar",
   [M.THUMB] = "PmenuThumb",
   [M.THUMB_HOVER] = "PmenuThumb",
+  [M.MINIMAP] = "NormalFloat",
+  [M.MINIMAP_VIEWPORT] = "Visual",
   [M.MARK_ERROR] = "DiagnosticError",
   [M.MARK_WARN] = "DiagnosticWarn",
   [M.MARK_INFO] = "DiagnosticInfo",

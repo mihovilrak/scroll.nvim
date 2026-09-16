@@ -1,15 +1,11 @@
 --- Per-buffer cache of the widest line, in display columns.
 ---
---- This is the horizontal bar's equivalent of "how tall is the document", and
---- it is the one genuinely expensive quantity in the plugin: measuring every
---- line of a 100k-line buffer with `strdisplaywidth` costs ~73ms. So the full
---- scan runs in chunks off a timer, while the visible lines -- always cheap --
---- are measured synchronously so the bar is never blank while a scan is in
---- flight.
+--- Measuring every line is O(lines), so the full scan runs in chunks off a
+--- timer, while the visible lines are measured synchronously so the bar is
+--- never blank while a scan is in flight.
 local M = {}
 
---- Lines per chunk. ~2000 lines measures in about 1.5ms, comfortably inside a
---- frame, so typing never stutters behind a scan.
+--- Lines per chunk: small enough that a chunk never stalls typing.
 local CHUNK = 2000
 
 --- Buffers at or below this size are scanned in one synchronous pass; the

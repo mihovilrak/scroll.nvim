@@ -1,23 +1,17 @@
---- Turning a window into the three numbers `geometry.thumb` needs.
+--- Turning a window into the numbers `geometry.thumb` needs.
 ---
---- The vertical case is the performance-critical one. `nvim_win_text_height`
---- is the only call that correctly accounts for folds, wrapping, virtual lines,
---- diff filler and 'smoothscroll', but measuring from the start of the buffer
---- is O(topline): 69ms at line 190000 of a wrapped 200k-line buffer. Calling
---- that on every scroll event is not viable.
----
---- The way out is an additivity identity of `nvim_win_text_height`, verified on
---- this machine:
+--- `nvim_win_text_height` is the only call that accounts for folds, wrapping,
+--- virtual lines, diff filler and 'smoothscroll', but it is O(lines measured),
+--- too slow to measure from the top of a large buffer on every scroll. Its
+--- ranges are additive, though:
 ---
 ---   A(t) := text_height{start_row = 0, end_row = t - 1, end_vcol = 0}.all
 ---   A(t1) = A(t0) + text_height{start_row = t0 - 1, start_vcol = 0,
 ---                               end_row   = t1 - 1, end_vcol   = 0}.all
 ---
---- `start_vcol = 0` excludes the virtual-line fill above `start_row`, which is
---- exactly what makes the ranges telescope instead of double-counting. So we
---- anchor A once and then move it by the distance actually scrolled, which is
---- O(lines crossed) rather than O(lines above). Scrolling a line costs ~1us
---- instead of 69ms.
+--- (`start_vcol = 0` excludes the virtual lines above `start_row`, so adjacent
+--- ranges do not double-count.) So the offset is anchored once and then moved
+--- by the distance scrolled: O(lines crossed), not O(lines above).
 local config = require("scroll.config")
 
 local M = {}

@@ -1,14 +1,12 @@
 --- Click-to-jump, thumb dragging and hover.
 ---
---- Hit testing has to cope with an ambiguity: depending on the build and on
---- whether the float is focusable, `getmousepos()` over a bar reports either
---- the bar's own float or the window underneath it. Probing headless gave
---- contradictory answers, so `locate` handles both -- it maps a float back to
---- its parent when it sees one, and otherwise uses the reported window
---- directly. Either way it ends up with a parent window and a cell offset.
+--- Over a bar, `getmousepos()` may report either the bar's float or the
+--- window underneath it, so `locate` accepts both and resolves to the parent
+--- window and a cell offset.
 local config = require("scroll.config")
 local geometry = require("scroll.geometry")
 local measure = require("scroll.measure")
+local minimap = require("scroll.minimap")
 local render = require("scroll.render")
 
 local M = {}
@@ -92,6 +90,11 @@ local function hit_test()
 
   local computed = render.compute(at.win)
 
+  local map = computed.minimap
+  if map and at.col >= map.col and at.col < map.col + map.width then
+    return "minimap", at
+  end
+
   if computed.vertical and at.col >= info.width - opts.vertical.width then
     return "vertical", at
   end
@@ -105,6 +108,97 @@ local function hit_test()
   end
 
   return nil, nil
+end
+
+--- 'scrolloff'/'sidescrolloff' as they apply to `win`, as the margins Nvim
+--- actually keeps before and after the cursor across `span` cells. A value too
+--- large to honour (the "keep centred" idiom) centres the cursor, and Nvim
+--- centres at row `(span - 1) / 2` but at column `span / 2`, so the caller says
+--- which cap applies.
+local function margins(win, name, span, center)
+  local value = vim.wo[win][name]
+  if value < 0 then
+    value = vim.o[name]
+  end
+  local before = math.max(0, math.min(value, center))
+  local after = math.max(0, math.min(value, span - 1 - before))
+  return before, after
+end
+
+--- Set `topline`, moving the cursor into the new view when it would fall
+--- outside. Nvim keeps the cursor on screen, so a view the cursor is not in is
+--- scrolled straight back on the next redraw.
+local function set_topline(win, topline)
+  vim.api.nvim_win_call(win, function()
+    local height = vim.fn.getwininfo(win)[1].height
+    local above, below = margins(win, "scrolloff", height, math.floor((height - 1) / 2))
+    local lnum = vim.fn.line(".")
+    local top = math.min(topline + above, vim.fn.line("$"))
+    if lnum < top then
+      vim.fn.winrestview({ topline = topline, lnum = top })
+      return
+    end
+    -- With wrapping, `height` lines may not fit; place the cursor first,
+    -- then let Nvim say where the view ends.
+    vim.fn.winrestview({ topline = topline, lnum = top })
+    local bottom = math.max(top, vim.fn.line("w$") - below)
+    vim.fn.winrestview({ topline = topline, lnum = math.min(lnum, bottom) })
+  end)
+end
+
+--- Set `leftcol`, moving the cursor into the new view when it would fall
+--- outside. If the cursor line is too short to reach the view at all, the
+--- cursor moves to the nearest visible line that is long enough.
+local function set_leftcol(win, leftcol)
+  vim.api.nvim_win_call(win, function()
+    local info = vim.fn.getwininfo(win)[1]
+    local textw = info.width - info.textoff
+    local left, right = margins(win, "sidescrolloff", textw, math.floor(textw / 2))
+    local lo, hi = leftcol + left + 1, leftcol + textw - right -- 1-based virtual columns
+
+    local function reaches(l)
+      return leftcol == 0 or vim.fn.virtcol({ l, "$" }) - 1 >= lo
+    end
+
+    local lnum = vim.fn.line(".")
+    if not reaches(lnum) then
+      local found = nil
+      for d = 1, info.botline - info.topline do
+        for _, l in ipairs({ lnum - d, lnum + d }) do
+          if not found and l >= info.topline and l <= info.botline and reaches(l) then
+            found = l
+          end
+        end
+        if found then
+          break
+        end
+      end
+      if not found then
+        vim.fn.winrestview({ leftcol = leftcol })
+        return
+      end
+      lnum = found
+    end
+
+    local vcol = lnum == vim.fn.line(".") and vim.fn.virtcol(".") or lo
+    local target = math.max(lo, math.min(vcol, hi))
+    local col = math.max(0, vim.fn.virtcol2col(0, lnum, target) - 1)
+    vim.fn.winrestview({ lnum = lnum, leftcol = leftcol, col = col, curswant = target - 1 })
+  end)
+end
+
+--- Centre `win` on the buffer line under minimap row `row`.
+local function minimap_jump(win, row)
+  local computed = render.compute(win)
+  local map, info = computed.minimap, computed.info
+  if not map then
+    return
+  end
+  local buf = vim.api.nvim_win_get_buf(win)
+  local line = math.min(minimap.line_at(map, row), vim.api.nvim_buf_line_count(buf))
+  local page = info.botline - info.topline + 1
+  set_topline(win, math.max(1, line - math.floor(page / 2)))
+  pcall(vim.api.nvim__redraw, { win = win, valid = true, flush = true })
 end
 
 --- Scroll `win` so the thumb's leading edge sits at `track_pos`.
@@ -126,10 +220,7 @@ local function scroll_to(win, orientation, track_pos, grab)
       page = v.page,
       pos = track_pos - grab,
     })
-    local topline = measure.topline_at(win, target)
-    vim.api.nvim_win_call(win, function()
-      vim.fn.winrestview({ topline = topline })
-    end)
+    set_topline(win, measure.topline_at(win, target))
   else
     local h = computed.horizontal
     if not h then
@@ -141,9 +232,7 @@ local function scroll_to(win, orientation, track_pos, grab)
       page = h.page,
       pos = track_pos - grab,
     })
-    vim.api.nvim_win_call(win, function()
-      vim.fn.winrestview({ leftcol = leftcol })
-    end)
+    set_leftcol(win, leftcol)
   end
 
   -- A mapping does not repaint until it returns, which would make a drag feel
@@ -176,6 +265,12 @@ local function on_press()
     return false
   end
 
+  if orientation == "minimap" then
+    drag = { win = at.win, orientation = orientation, grab = 0 }
+    minimap_jump(at.win, at.row)
+    return true
+  end
+
   local pos = track_position(at, orientation, at.info)
   local start, size = thumb_start(at.win, orientation)
 
@@ -202,7 +297,11 @@ local function on_drag()
   end
 
   local track_pos
-  if drag.orientation == "vertical" then
+  if drag.orientation == "minimap" then
+    local row = pos.screenrow - info.winrow - info.winbar
+    minimap_jump(drag.win, math.max(0, math.min(row, info.height - 1)))
+    return true
+  elseif drag.orientation == "vertical" then
     track_pos = pos.screenrow - info.winrow - info.winbar
     track_pos = math.max(0, math.min(track_pos, info.height - 1))
   else
@@ -278,5 +377,10 @@ function M.disable()
   end
   previous = {}
 end
+
+-- Exposed for tests: exercising these through real mouse events needs a UI.
+M._set_topline = set_topline
+M._set_leftcol = set_leftcol
+M._minimap_jump = minimap_jump
 
 return M

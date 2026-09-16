@@ -44,6 +44,22 @@ M.defaults = {
     },
   },
 
+  --- Plain minimap: the buffer in braille, with a git change gutter and the
+  --- viewport highlighted, overlaid left of the vertical bar. Toggle with
+  --- `:ScrollMinimapToggle`.
+  minimap = {
+    enabled = false,
+    width = 20, -- columns, including the 1-column git gutter
+    columns_per_dot = 2, -- text columns per braille dot column
+    min_window_width = 80, -- not drawn in narrower windows
+    git = true,
+    git_char = "▎",
+    winblend = 0,
+    --- Hide with the scrollbars when `visibility` hides them. Off by default:
+    --- a minimap that keeps vanishing is hard to use.
+    autohide = false,
+  },
+
   --- "auto" fade in on activity, hide after `hide_delay` ms of quiet
   --- "always" draw whenever the content overflows
   --- "hover" only while the pointer is near the bar (needs 'mousemoveevent')
@@ -67,10 +83,8 @@ M.defaults = {
   min_width = 20,
   min_height = 5,
 
-  --- Buffers larger than this fall back to interpolating the thumb position
-  --- instead of measuring display rows exactly. See PLAN.md: measuring is
-  --- ~0.28us/line, so an exact measurement on a 100k-line wrapped buffer would
-  --- cost 28ms on every scroll event.
+  --- Beyond this many lines, a jump is interpolated instead of measured
+  --- exactly, since exact measurement costs O(lines crossed).
   exact_measure_max_lines = 10000,
 }
 
@@ -90,6 +104,13 @@ local function validate(opts)
   end, "a number between 0 and 100")
   vim.validate("zindex", opts.zindex, "number")
   vim.validate("mouse", opts.mouse, "boolean")
+  vim.validate("minimap", opts.minimap, "table")
+  vim.validate("minimap.width", opts.minimap.width, function(v)
+    return type(v) == "number" and v >= 2
+  end, "a number >= 2")
+  vim.validate("minimap.columns_per_dot", opts.minimap.columns_per_dot, function(v)
+    return type(v) == "number" and v >= 1
+  end, "a number >= 1")
   vim.validate("marks", opts.marks, "table")
   for _, source in ipairs({ "diagnostics", "git", "search" }) do
     vim.validate("marks." .. source, opts.marks[source], "table")

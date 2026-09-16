@@ -1,6 +1,7 @@
 --- Autocmd wiring and the refresh coalescer.
 local highlight = require("scroll.highlight")
 local measure = require("scroll.measure")
+local minimap = require("scroll.minimap")
 local render = require("scroll.render")
 local ruler = require("scroll.ruler")
 local search = require("scroll.marks.search")
@@ -168,11 +169,16 @@ function M.enable()
     end,
   })
 
+  -- Deferred: closing windows from inside WinClosed breaks `:only` (E445)
+  -- and was seen to corrupt memory. Nvim closes floats attached to a closed
+  -- window by itself; this only releases our bookkeeping and buffers.
   au("WinClosed", {
     handler = function(args)
       local win = tonumber(args.match)
       if win then
-        render.clear(win)
+        vim.schedule(function()
+          render.clear(win)
+        end)
       end
     end,
   })
@@ -181,6 +187,7 @@ function M.enable()
     handler = function(args)
       width.forget(args.buf)
       ruler.forget_buf(args.buf)
+      minimap.forget(args.buf)
     end,
     refresh = false,
   })
@@ -228,6 +235,7 @@ function M.disable()
   measure.reset()
   width.reset()
   ruler.reset()
+  minimap.reset()
 end
 
 return M

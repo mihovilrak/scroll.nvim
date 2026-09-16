@@ -1,5 +1,6 @@
---- One scrollbar: a floating window, its scratch buffer, and the thumb drawn
---- inside it.
+--- One overlay: a floating window, its scratch buffer, and what is drawn in
+--- it -- a scrollbar thumb by default, or anything a caller's `paint` draws
+--- (the minimap).
 ---
 --- Floats are created once and then only reconfigured. Hiding uses the `hide`
 --- window-config flag rather than closing, which keeps the float handle valid
@@ -11,14 +12,15 @@ local ns = vim.api.nvim_create_namespace("scroll.nvim")
 local Bar = {}
 Bar.__index = Bar
 
+--- @param base_hl string|nil  highlight for the float's background (default: the track)
 --- @return table
-function Bar.new()
+function Bar.new(base_hl)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "hide"
   vim.bo[buf].buftype = "nofile"
   vim.bo[buf].swapfile = false
   vim.bo[buf].filetype = "scrollbar"
-  return setmetatable({ buf = buf, win = nil, drawn = nil, hidden = true }, Bar)
+  return setmetatable({ buf = buf, win = nil, drawn = nil, hidden = true, base_hl = base_hl or highlight.TRACK }, Bar)
 end
 
 function Bar:is_valid()
@@ -30,7 +32,7 @@ end
 --- The lines are constructed here rather than highlighted in place so the byte
 --- offsets of the thumb are known exactly. Track and thumb glyphs are
 --- usually multi-byte, so a column index is not a byte index.
-local function paint(buf, opts)
+local function paint(buf, ns, opts)
   local lines, mark = {}, nil
 
   if opts.orientation == "vertical" then
@@ -94,14 +96,15 @@ end
 ---   pos,size    thumb placement along that axis
 ---   char, track_char, winblend, zindex, hovered
 ---   marks       ruler cells `{ row, col, char, hl }` (vertical only)
----   marks_sig   changes whenever `marks` does
+---   paint       `function(buf, ns, opts)` replacing the thumb drawing
+---   content_sig changes whenever anything `paint` or `marks` draw does
 function Bar:update(parent, opts)
   -- Skip the redraw entirely when nothing observable changed. Scroll events
   -- fire far more often than the thumb actually moves.
   local sig = table.concat({
-    parent, opts.row, opts.col, opts.width, opts.height,
-    opts.pos, opts.size, tostring(opts.hovered), opts.char, opts.track_char,
-    opts.marks_sig or "",
+    parent, opts.row, opts.col, opts.width, opts.height, opts.winblend,
+    tostring(opts.pos), tostring(opts.size), tostring(opts.hovered),
+    tostring(opts.char), tostring(opts.track_char), opts.content_sig or "",
   }, ":")
   if self.drawn == sig and self:is_valid() and not self.hidden then
     return
@@ -129,14 +132,15 @@ function Bar:update(parent, opts)
     win_cfg.noautocmd = true
     self.win = vim.api.nvim_open_win(self.buf, false, win_cfg)
     vim.wo[self.win].winhighlight = ("Normal:%s,NormalFloat:%s,EndOfBuffer:%s"):format(
-      highlight.TRACK,
-      highlight.TRACK,
-      highlight.TRACK
+      self.base_hl,
+      self.base_hl,
+      self.base_hl
     )
   end
 
   vim.wo[self.win].winblend = opts.winblend
-  paint(self.buf, opts)
+  local draw = opts.paint or paint
+  draw(self.buf, ns, opts)
 
   self.drawn = sig
   self.hidden = false

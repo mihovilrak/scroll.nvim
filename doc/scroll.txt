@@ -1,0 +1,214 @@
+*scroll.txt*  Scrollbars, overview ruler and minimap for Neovim
+
+Author:  Mihovil Rak
+License: MIT
+Requires Neovim 0.11+
+
+==============================================================================
+CONTENTS                                                      *scroll-contents*
+
+  1. Introduction ............................ |scroll-introduction|
+  2. Setup ................................... |scroll-setup|
+  3. Options ................................. |scroll-options|
+  4. Commands ................................ |scroll-commands|
+  5. Lua API ................................. |scroll-api|
+  6. Highlights .............................. |scroll-highlights|
+  7. Limitations ............................. |scroll-limitations|
+
+==============================================================================
+1. INTRODUCTION                                           *scroll-introduction*
+
+scroll.nvim draws scrollbars in the style of VS Code, overlaid on the window
+edges:
+
+- a vertical bar, which doubles as an overview ruler marking diagnostics, git
+  changes and search matches across the whole buffer;
+- a horizontal bar, shown when 'wrap' is off and lines run past the edge;
+- an optional plain minimap with a git change gutter.
+
+Bars can be clicked and dragged, and hide when idle by default.
+
+==============================================================================
+2. SETUP                                                         *scroll-setup*
+
+Nothing happens until |scroll.setup()| is called: >lua
+
+    require("scroll").setup({})
+<
+With lazy.nvim: >lua
+
+    { "mihovilrak/scroll.nvim", event = "VeryLazy", opts = {} }
+<
+Mouse support needs 'mouse' to include normal mode (the default "a" does).
+
+==============================================================================
+3. OPTIONS                                                     *scroll-options*
+
+Pass a table to |scroll.setup()|; omitted keys keep their defaults. >lua
+
+    require("scroll").setup({
+      minimap = { enabled = true },
+      marks = { diagnostics = { severity = { min = vim.diagnostic.severity.WARN } } },
+    })
+<
+                                                       *scroll-option-enabled*
+enabled ~
+    Boolean, default `true`. Enable the bars when `setup()` runs.
+
+                                                      *scroll-option-vertical*
+vertical ~
+    `enabled`     Boolean, default `true`.
+    `width`       Columns, default `1`. With 2 or more, git marks get their own
+                  column.
+    `char`        Thumb glyph, default `"█"`.
+    `track_char`  Track glyph, default `"│"`. Use `" "` for an invisible track.
+
+                                                    *scroll-option-horizontal*
+horizontal ~
+    `enabled`     Boolean, default `true`.
+    `height`      Rows, default `1`.
+    `char`        Thumb glyph, default `"█"`.
+    `track_char`  Track glyph, default `"─"`.
+
+                                                         *scroll-option-marks*
+marks ~
+    Overview ruler on the vertical bar. When marks share a cell, the most
+    severe wins: error > warning > search > info > hint > git.
+
+    `enabled`                   Boolean, default `true`.
+    `diagnostics.enabled`       Boolean, default `true`.
+    `diagnostics.char`          Default `"━"`.
+    `diagnostics.severity`      Filter passed to |vim.diagnostic.get()|,
+                                default `nil` (all).
+    `git.enabled`               Boolean, default `true`.
+    `git.char`                  Default `"▌"`.
+    `git.max_lines`             Default `20000`. Without gitsigns, buffers
+                                larger than this are not diffed.
+    `git.debounce`              Milliseconds, default `200`. Without
+                                gitsigns, the delay after an edit before
+                                re-diffing.
+    `search.enabled`            Boolean, default `true`. Marks lines matching
+                                the last search pattern while 'hlsearch' is
+                                highlighting it.
+    `search.char`               Default `"━"`.
+
+    Git hunks come from gitsigns.nvim when it is attached to the buffer.
+    Otherwise the buffer is diffed against its git index version, which is
+    refreshed on write and on |FocusGained|.
+
+                                                       *scroll-option-minimap*
+minimap ~
+    `enabled`           Boolean, default `false`.
+    `width`             Columns including the git gutter, default `20`.
+    `columns_per_dot`   Text columns per braille dot column, default `2`.
+                        Each braille cell covers 4 buffer lines.
+    `min_window_width`  Default `80`. Narrower windows get no minimap.
+    `git`               Boolean, default `true`. Show the git gutter.
+    `git_char`          Default `"▎"`.
+    `winblend`          Default `0`.
+    `autohide`          Boolean, default `false`. Hide along with the bars
+                        under |scroll-option-visibility|.
+
+    Click or drag on the minimap to centre the window there.
+
+                                                    *scroll-option-visibility*
+visibility ~
+    `"auto"` (default)  Show on activity, hide after `hide_delay` ms.
+    `"always"`          Show whenever the content overflows.
+    `"hover"`           Show while the pointer is over a bar. Needs
+                        'mousemoveevent'.
+
+hide_delay ~
+    Milliseconds, default `1000`.
+
+winblend ~
+    Transparency of the bars, 0-100, default `30`.
+
+zindex ~
+    Default `40`: above window text, below completion menus and most popups.
+
+mouse ~
+    Boolean, default `true`. Click-to-jump and dragging.
+
+excluded_filetypes ~
+    Default `{ "help", "qf", "NvimTree", "neo-tree", "TelescopePrompt",
+    "lazy", "mason" }`.
+
+excluded_buftypes ~
+    Default `{ "terminal", "prompt", "nofile", "quickfix" }`.
+
+min_width, min_height ~
+    Defaults `20` and `5`. Smaller windows get no bars.
+
+exact_measure_max_lines ~
+    Default `10000`. A single jump across more lines than this places the
+    thumb by interpolation instead of exact measurement.
+
+==============================================================================
+4. COMMANDS                                                   *scroll-commands*
+
+:ScrollToggle                                                   *:ScrollToggle*
+    Toggle the bars.
+
+:ScrollEnable                                                   *:ScrollEnable*
+:ScrollDisable                                                 *:ScrollDisable*
+    Enable or disable the bars.
+
+:ScrollRefresh                                                 *:ScrollRefresh*
+    Redraw the bars now.
+
+:ScrollMinimapToggle                                     *:ScrollMinimapToggle*
+    Toggle the minimap.
+
+==============================================================================
+5. LUA API                                                         *scroll-api*
+
+scroll.setup({opts})                                          *scroll.setup()*
+    Configure and enable. See |scroll-options|.
+
+scroll.enable()                                              *scroll.enable()*
+scroll.disable()                                            *scroll.disable()*
+scroll.toggle()                                              *scroll.toggle()*
+    Enable, disable or toggle the bars.
+
+scroll.refresh()                                            *scroll.refresh()*
+    Redraw the bars now.
+
+scroll.toggle_minimap({on})                          *scroll.toggle_minimap()*
+    Toggle the minimap, or force it on or off with a boolean {on}.
+
+scroll.is_enabled()                                      *scroll.is_enabled()*
+    Whether the bars are enabled.
+
+==============================================================================
+6. HIGHLIGHTS                                               *scroll-highlights*
+
+All groups are defined with `default = true`, so your own definitions win.
+
+ScrollTrack             Track. Links to |hl-PmenuSbar|.
+ScrollThumb             Thumb. Links to |hl-PmenuThumb|.
+ScrollThumbHover        Thumb under the pointer.
+ScrollMarkError         Diagnostic marks. Link to the matching
+ScrollMarkWarn          `Diagnostic*` groups.
+ScrollMarkInfo
+ScrollMarkHint
+ScrollMarkSearch        Search marks. Foreground taken from |hl-Search|.
+ScrollMarkAdd           Git marks. Link to `GitSigns*` when the
+ScrollMarkChange        colorscheme defines them, otherwise to
+ScrollMarkDelete        `Added`, `Changed` and `Removed`.
+ScrollMinimap           Minimap. Links to |hl-NormalFloat|.
+ScrollMinimapViewport   Visible region in the minimap. Links to |hl-Visual|.
+
+==============================================================================
+7. LIMITATIONS                                             *scroll-limitations*
+
+- Horizontal width ignores concealed text and inline virtual text.
+- The minimap ignores folds and wrapping, and counts double-width
+  characters as one column.
+- Fold changes made away from the visible lines (for example `:100,400fold`
+  while viewing the top of the buffer) are noticed at the next edit or
+  option change.
+- Neovim keeps the cursor on screen, so dragging a bar moves the cursor into
+  the new view.
+
+ vim:tw=78:ts=8:ft=help:norl:

@@ -59,6 +59,19 @@ function M.refresh()
   end
 end
 
+--- Show or hide the minimap in every window.
+--- @param on boolean|nil  force a state instead of toggling
+function M.toggle_minimap(on)
+  local mm = config.options.minimap
+  if on == nil then
+    on = not mm.enabled
+  end
+  mm.enabled = on
+  if active then
+    render.refresh_all()
+  end
+end
+
 function M.is_enabled()
   return active
 end

@@ -5,8 +5,7 @@
 --- once with `git show` (asynchronously), then `vim.diff` compares it with the
 --- live buffer text, so unsaved edits are marked too.
 ---
---- That diff is O(lines) -- probed at ~140ms for 100k lines including joining
---- the buffer -- so it is debounced after edits and skipped above
+--- That diff is O(lines), so it is debounced after edits and skipped above
 --- `marks.git.max_lines`.
 local config = require("scroll.config")
 

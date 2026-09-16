@@ -1,10 +1,9 @@
 --- Search-match marks for the overview ruler: every line matching `@/`,
 --- shown while 'hlsearch' is highlighting it.
 ---
---- Matching is O(lines) and nothing Nvim offers is cheap on a big buffer
---- (probed at 100k lines: ~30-150ms per scan whichever API does it), so this
---- follows `width.lua`: small buffers are scanned synchronously, large ones in
---- chunks off a timer, and the previous result is served until a scan finishes.
+--- Matching is O(lines), so like `width.lua`, small buffers are scanned
+--- synchronously and large ones in chunks off a timer, serving the previous
+--- result until a scan finishes.
 local M = {}
 
 local CHUNK = 2000
