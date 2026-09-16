@@ -10,6 +10,10 @@ M.TRACK = "ScrollTrack"
 M.THUMB = "ScrollThumb"
 M.THUMB_HOVER = "ScrollThumbHover"
 
+--- Internal: what the thumb's cells are actually drawn with. See `setup`.
+M.THUMB_CELL = "ScrollThumbCell"
+M.THUMB_CELL_HOVER = "ScrollThumbCellHover"
+
 M.MINIMAP = "ScrollMinimap"
 M.MINIMAP_VIEWPORT = "ScrollMinimapViewport"
 
@@ -63,6 +67,18 @@ function M.setup()
       bold = true,
       default = true,
     })
+  end
+
+  -- The thumb glyph is drawn in the thumb's foreground (the text colour when
+  -- the colorscheme only styles `PmenuThumb`'s background, as most do). The
+  -- rest of the cell takes the track's background, so a partial block such as
+  -- "▄" really is half a cell thick instead of sitting on a thumb-coloured
+  -- square. These are derived, not user-facing, so they are always rewritten.
+  local normal = get("Normal")
+  local track_bg = get(M.TRACK).bg
+  for cell, source in pairs({ [M.THUMB_CELL] = M.THUMB, [M.THUMB_CELL_HOVER] = M.THUMB_HOVER }) do
+    local hl = get(source)
+    vim.api.nvim_set_hl(0, cell, { fg = hl.fg or normal.fg, bg = track_bg, bold = hl.bold })
   end
 
   for group, candidates in pairs(git_links) do

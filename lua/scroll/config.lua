@@ -13,7 +13,9 @@ M.defaults = {
   horizontal = {
     enabled = true,
     height = 1,
-    char = "█",
+    --- A half block: a character cell is about twice as tall as it is wide,
+    --- so this matches the thickness of the one-column vertical thumb.
+    char = "▄",
     track_char = "─",
   },
 
@@ -91,6 +93,11 @@ M.defaults = {
 --- @type table
 M.options = vim.deepcopy(M.defaults)
 
+--- Sections that may be given as a bare boolean: `minimap = true` is
+--- `minimap = { enabled = true }`.
+local sections = { "vertical", "horizontal", "marks", "minimap" }
+local mark_sources = { "diagnostics", "git", "search" }
+
 --- Validate the parts of a user config where a wrong value would otherwise
 --- fail later in a confusing place (inside a redraw, or as a bad window config).
 --- @param opts table
@@ -112,7 +119,7 @@ local function validate(opts)
     return type(v) == "number" and v >= 1
   end, "a number >= 1")
   vim.validate("marks", opts.marks, "table")
-  for _, source in ipairs({ "diagnostics", "git", "search" }) do
+  for _, source in ipairs(mark_sources) do
     vim.validate("marks." .. source, opts.marks[source], "table")
     vim.validate("marks." .. source .. ".char", opts.marks[source].char, function(v)
       return type(v) == "string" and vim.fn.strdisplaywidth(v) == 1
@@ -127,10 +134,27 @@ local function validate(opts)
   end
 end
 
+--- @param tbl table
+--- @param key string
+local function expand(tbl, key)
+  if type(tbl[key]) == "boolean" then
+    tbl[key] = { enabled = tbl[key] }
+  end
+end
+
 --- @param opts table|nil
 --- @return table  the merged, validated options
 function M.setup(opts)
-  M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts or {})
+  opts = vim.deepcopy(opts or {})
+  for _, key in ipairs(sections) do
+    expand(opts, key)
+  end
+  if type(opts.marks) == "table" then
+    for _, key in ipairs(mark_sources) do
+      expand(opts.marks, key)
+    end
+  end
+  M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
   validate(M.options)
   return M.options
 end

@@ -9,15 +9,24 @@ local M = {}
 
 local active = false
 
+--- Whether `setup` has run, so the automatic setup in `plugin/scroll.lua`
+--- can stand aside for a user's own call.
+M.did_setup = false
+
+--- Optional: the plugin sets itself up with the defaults at startup. Call this
+--- to change options; calling it again replaces them.
 --- @param opts table|nil
 function M.setup(opts)
+  M.did_setup = true
   config.setup(opts)
   highlight.setup()
 
-  if config.options.enabled == false then
-    return
+  -- Restart, so options read at enable time (`mouse`) take effect and every
+  -- bar is redrawn from the new options.
+  M.disable()
+  if config.options.enabled ~= false then
+    M.enable()
   end
-  M.enable()
 end
 
 function M.enable()
@@ -55,6 +64,7 @@ end
 --- from a user's own autocmds.
 function M.refresh()
   if active then
+    highlight.setup()
     render.refresh_all()
   end
 end

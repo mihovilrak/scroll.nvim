@@ -103,6 +103,35 @@ local function marks_updated()
   require("scroll.events").schedule({ quiet = true })
 end
 
+--- Box-drawing joints for the bottom-right corner, keyed by the vertical then
+--- the horizontal track glyph. Other glyph pairs get no joint.
+local corners = {
+  ["│─"] = "┘",
+  ["┃━"] = "┛",
+  ["│━"] = "┙",
+  ["┃─"] = "┚",
+  ["║═"] = "╝",
+  ["╎╌"] = "┘",
+  ["┆┄"] = "┘",
+}
+
+--- The glyph that joins the two tracks where they meet, or nil when they do
+--- not meet: no horizontal bar, one ended early by the minimap, or bars
+--- thicker than one cell.
+--- @param computed table  from `compute`
+--- @return string|nil
+local function corner(computed)
+  local opts = config.options
+  local info, h = computed.info, computed.horizontal
+  if not h or opts.vertical.width ~= 1 or opts.horizontal.height ~= 1 then
+    return nil
+  end
+  if h.textoff + h.track ~= info.width - 1 then
+    return nil
+  end
+  return corners[opts.vertical.track_char .. opts.horizontal.track_char]
+end
+
 --- @param win integer
 --- @param entry table  the window's bars
 --- @param computed table  from `compute`
@@ -134,6 +163,7 @@ local function draw_vertical(win, entry, computed, hovered)
     zindex = opts.zindex,
     hovered = hovered,
     marks = marks,
+    corner = corner(computed),
     content_sig = content_sig,
   })
 end

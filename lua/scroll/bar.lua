@@ -42,6 +42,11 @@ local function paint(buf, ns, opts)
       local in_thumb = i > opts.pos and i <= opts.pos + opts.size
       lines[i] = in_thumb and thumb_line or track_line
     end
+    -- Where the horizontal bar meets this one, join the two track lines.
+    local last = opts.length
+    if opts.corner and not (last > opts.pos and last <= opts.pos + opts.size) then
+      lines[last] = opts.corner
+    end
     mark = {
       start_row = opts.pos,
       start_col = 0,
@@ -66,7 +71,7 @@ local function paint(buf, ns, opts)
   vim.api.nvim_buf_set_extmark(buf, ns, mark.start_row, mark.start_col, {
     end_row = mark.end_row,
     end_col = mark.end_col,
-    hl_group = opts.hovered and highlight.THUMB_HOVER or highlight.THUMB,
+    hl_group = opts.hovered and highlight.THUMB_CELL_HOVER or highlight.THUMB_CELL,
     hl_eol = true,
     priority = 200,
   })
@@ -74,8 +79,10 @@ local function paint(buf, ns, opts)
   -- Ruler marks replace the glyph in their cell but keep its background
   -- (`combine`), so a mark reads the same on the track and on the thumb.
   for _, m in ipairs(opts.marks or {}) do
-    local glyph = (m.row >= opts.pos and m.row < opts.pos + opts.size) and opts.char or opts.track_char
-    vim.api.nvim_buf_set_extmark(buf, ns, m.row, m.col * #glyph, {
+    -- Every cell in a row is the same glyph, so its byte length gives the
+    -- column's byte offset.
+    local glyph_bytes = #lines[m.row + 1] / opts.width
+    vim.api.nvim_buf_set_extmark(buf, ns, m.row, m.col * glyph_bytes, {
       virt_text = { { m.char, m.hl } },
       virt_text_pos = "overlay",
       hl_mode = "combine",
@@ -96,6 +103,7 @@ end
 ---   pos,size    thumb placement along that axis
 ---   char, track_char, winblend, zindex, hovered
 ---   marks       ruler cells `{ row, col, char, hl }` (vertical only)
+---   corner      glyph for the last track cell, where the horizontal bar meets it (vertical only)
 ---   paint       `function(buf, ns, opts)` replacing the thumb drawing
 ---   content_sig changes whenever anything `paint` or `marks` draw does
 function Bar:update(parent, opts)
@@ -104,7 +112,7 @@ function Bar:update(parent, opts)
   local sig = table.concat({
     parent, opts.row, opts.col, opts.width, opts.height, opts.winblend,
     tostring(opts.pos), tostring(opts.size), tostring(opts.hovered),
-    tostring(opts.char), tostring(opts.track_char), opts.content_sig or "",
+    tostring(opts.char), tostring(opts.track_char), tostring(opts.corner), opts.content_sig or "",
   }, ":")
   if self.drawn == sig and self:is_valid() and not self.hidden then
     return

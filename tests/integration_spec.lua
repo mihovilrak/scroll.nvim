@@ -252,4 +252,63 @@ t.describe("the thumb never leaves the track, at any scroll position", function(
   end
 end)
 
+--- The lines drawn in a bar's float.
+local function drawn(win, orientation)
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local parent, o = render.owner_of(w)
+    if parent == win and o == orientation then
+      return vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w), 0, -1, false)
+    end
+  end
+end
+
+t.describe("the tracks join in the bottom-right corner", function()
+  vim.cmd("silent! only")
+  fill(500, string.rep("c", 400))
+  local win = vim.api.nvim_get_current_win()
+  vim.wo[win].wrap = false
+  vim.cmd("normal! gg")
+  scroll.refresh()
+  local lines = drawn(win, "vertical")
+  t.eq(lines[#lines], "┘", "the last vertical cell joins the horizontal track")
+  t.eq(lines[#lines - 1], "│", "the rest of the track is unchanged")
+
+  vim.wo[win].wrap = true
+  scroll.refresh()
+  lines = drawn(win, "vertical")
+  t.eq(lines[#lines], "│", "no joint without a horizontal bar")
+
+  vim.wo[win].wrap = false
+  vim.cmd("normal! G")
+  scroll.refresh()
+  lines = drawn(win, "vertical")
+  t.eq(lines[#lines], "█", "the thumb covers the joint at the end of the buffer")
+end)
+
+t.describe("the thumb cell takes the track's background", function()
+  vim.api.nvim_set_hl(0, "ScrollTrack", { bg = 0x111111 })
+  vim.api.nvim_set_hl(0, "ScrollThumb", { fg = 0xabcdef, bg = 0x333333 })
+  require("scroll.highlight").setup()
+  local cell = vim.api.nvim_get_hl(0, { name = "ScrollThumbCell" })
+  t.eq(cell.fg, 0xabcdef, "the glyph keeps the thumb colour")
+  t.eq(cell.bg, 0x111111, "the rest of a half block shows the track")
+  vim.api.nvim_set_hl(0, "ScrollTrack", {})
+  vim.api.nvim_set_hl(0, "ScrollThumb", {})
+end)
+
+t.describe("setup accepts booleans and can be called again", function()
+  scroll.setup({ visibility = "always", mouse = false, minimap = true, marks = { git = false } })
+  local opts = require("scroll.config").options
+  t.eq(opts.minimap.enabled, true, "minimap = true enables the minimap")
+  t.eq(opts.minimap.width, 20, "and keeps its other defaults")
+  t.eq(opts.marks.git.enabled, false, "marks.git = false disables git marks")
+  t.eq(opts.marks.git.char, "▌", "and keeps its other defaults")
+  t.check(scroll.is_enabled(), "a second setup leaves the plugin running")
+
+  scroll.setup({ enabled = false })
+  t.check(not scroll.is_enabled(), "setup({ enabled = false }) stops a running plugin")
+  scroll.setup({ visibility = "always", mouse = false })
+  t.check(scroll.is_enabled(), "and a later setup starts it again")
+end)
+
 t.finish("integration")

@@ -13,29 +13,37 @@ Requires Neovim **0.11+**.
 
 ## Install
 
+Installing is all it takes: the plugin sets itself up with the defaults, so no `setup()` call is
+needed unless you want to change something.
+
 **[lazy.nvim](https://github.com/folke/lazy.nvim)** (also LazyVim): add a file such as
 `lua/plugins/scroll.lua`:
 
 ```lua
+return { "mihovilrak/scroll.nvim" }
+```
+
+To change options, add `opts`; lazy.nvim passes them to `require("scroll").setup()`:
+
+```lua
 return {
   "mihovilrak/scroll.nvim",
-  event = "VeryLazy",
-  opts = {}, -- your options; passed to require("scroll").setup()
+  opts = { minimap = true },
 }
 ```
+
+Add `version = "*"` to follow tagged releases instead of the latest commit.
 
 **Neovim 0.12+ built-in `vim.pack`:**
 
 ```lua
 vim.pack.add({ "https://github.com/mihovilrak/scroll.nvim" })
-require("scroll").setup({})
 ```
 
 **[mini.deps](https://github.com/echasnovski/mini.nvim):**
 
 ```lua
 MiniDeps.add({ source = "mihovilrak/scroll.nvim" })
-require("scroll").setup({})
 ```
 
 **No plugin manager:** clone it into a package directory and call `setup()` from your config:
@@ -47,22 +55,22 @@ git clone https://github.com/mihovilrak/scroll.nvim ~/.local/share/nvim/site/pac
 git clone https://github.com/mihovilrak/scroll.nvim "$env:LOCALAPPDATA\nvim-data\site\pack\plugins\start\scroll.nvim"
 ```
 
-```lua
-require("scroll").setup({})
-```
-
-Nothing happens until `setup()` is called. Mouse support needs `vim.o.mouse` to include normal mode
-(`"a"`, Neovim's default).
+Mouse support needs `vim.o.mouse` to include normal mode (`"a"`, Neovim's default).
 
 ## Configuration
 
-`setup()` takes the table below; anything you omit keeps its default. For example, to turn on the
-minimap and only mark warnings and errors:
+`setup()` takes the table below; anything you omit keeps its default, and calling it again replaces
+the options. The `vertical`, `horizontal`, `marks` and `minimap` sections, and each source under
+`marks`, also accept a bare boolean: `minimap = true` is short for `minimap = { enabled = true }`.
+For example, to turn on the minimap, drop git marks and only mark warnings and errors:
 
 ```lua
 require("scroll").setup({
-  minimap = { enabled = true },
-  marks = { diagnostics = { severity = { min = vim.diagnostic.severity.WARN } } },
+  minimap = true,
+  marks = {
+    git = false,
+    diagnostics = { severity = { min = vim.diagnostic.severity.WARN } },
+  },
 })
 ```
 
@@ -81,7 +89,7 @@ require("scroll").setup({
   horizontal = {
     enabled = true,
     height = 1,
-    char = "█",
+    char = "▄",          -- half a cell: as thick as the 1-column vertical thumb
     track_char = "─",
   },
 
@@ -141,7 +149,9 @@ require("scroll").setup({
 ### Highlights
 
 `ScrollTrack`, `ScrollThumb` and `ScrollThumbHover`, linked by default to `PmenuSbar` / `PmenuThumb`
-so they follow your colorscheme.
+so they follow your colorscheme. The thumb glyph is drawn in `ScrollThumb`'s foreground (or
+`Normal`'s, when it has none) over the track's background, so the half-block horizontal thumb really
+is half a cell.
 
 Ruler marks: `ScrollMarkError` / `Warn` / `Info` / `Hint` (linked to the `Diagnostic*` groups),
 `ScrollMarkAdd` / `Change` / `Delete` (linked to `GitSigns*` when your colorscheme styles them, else
@@ -241,6 +251,11 @@ Six suites, all headless and independent of your config:
 Inside a Neovim `:terminal`, `$NVIM` is the server address, so the Makefile uses `NVIM_BIN` to pick
 the binary: `make test NVIM_BIN=/path/to/nvim`. `make fmt` formats with
 [StyLua](https://github.com/JohnnyMorganz/StyLua).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Releases are tagged with [semantic versions](https://semver.org).
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

@@ -31,29 +31,34 @@ Bars can be clicked and dragged, and hide when idle by default.
 ==============================================================================
 2. SETUP                                                         *scroll-setup*
 
-Nothing happens until |scroll.setup()| is called: >lua
+Installing the plugin is enough: it sets itself up with the defaults once
+Nvim has started. Call |scroll.setup()| only to change options: >lua
 
-    require("scroll").setup({})
+    require("scroll").setup({ minimap = true })
 <
 With lazy.nvim: >lua
 
-    { "mihovilrak/scroll.nvim", event = "VeryLazy", opts = {} }
+    { "mihovilrak/scroll.nvim", opts = { minimap = true } }
 <
 Mouse support needs 'mouse' to include normal mode (the default "a" does).
 
 ==============================================================================
 3. OPTIONS                                                     *scroll-options*
 
-Pass a table to |scroll.setup()|; omitted keys keep their defaults. >lua
+Pass a table to |scroll.setup()|; omitted keys keep their defaults. The
+`vertical`, `horizontal`, `marks` and `minimap` sections, and each source under
+`marks`, can be given as a bare boolean: `minimap = true` means
+`minimap = { enabled = true }`. >lua
 
     require("scroll").setup({
-      minimap = { enabled = true },
+      minimap = true,
+      marks = { git = false },
       marks = { diagnostics = { severity = { min = vim.diagnostic.severity.WARN } } },
     })
 <
                                                        *scroll-option-enabled*
 enabled ~
-    Boolean, default `true`. Enable the bars when `setup()` runs.
+    Boolean, default `true`. `false` keeps the bars off until |scroll.enable()|.
 
                                                       *scroll-option-vertical*
 vertical ~
@@ -67,8 +72,13 @@ vertical ~
 horizontal ~
     `enabled`     Boolean, default `true`.
     `height`      Rows, default `1`.
-    `char`        Thumb glyph, default `"█"`.
+    `char`        Thumb glyph, default `"▄"`: half a cell tall, which is
+                  about as thick as the one-column vertical thumb. Use `"█"`
+                  for a full cell, and with `height` above 1.
     `track_char`  Track glyph, default `"─"`.
+
+Where the two tracks meet, the vertical track ends in a box-drawing joint
+(`┘` for the default glyphs) when both bars are one cell thick.
 
                                                          *scroll-option-marks*
 marks ~
@@ -155,7 +165,7 @@ exact_measure_max_lines ~
     Enable or disable the bars.
 
 :ScrollRefresh                                                 *:ScrollRefresh*
-    Redraw the bars now.
+    Redraw the bars now, re-reading the highlight groups.
 
 :ScrollMinimapToggle                                     *:ScrollMinimapToggle*
     Toggle the minimap.
@@ -164,7 +174,8 @@ exact_measure_max_lines ~
 5. LUA API                                                         *scroll-api*
 
 scroll.setup({opts})                                          *scroll.setup()*
-    Configure and enable. See |scroll-options|.
+    Configure and enable. Optional; see |scroll-setup|. Calling it again
+    replaces the options. See |scroll-options|.
 
 scroll.enable()                                              *scroll.enable()*
 scroll.disable()                                            *scroll.disable()*
@@ -172,7 +183,7 @@ scroll.toggle()                                              *scroll.toggle()*
     Enable, disable or toggle the bars.
 
 scroll.refresh()                                            *scroll.refresh()*
-    Redraw the bars now.
+    Redraw the bars now, re-reading the highlight groups.
 
 scroll.toggle_minimap({on})                          *scroll.toggle_minimap()*
     Toggle the minimap, or force it on or off with a boolean {on}.
@@ -186,7 +197,9 @@ scroll.is_enabled()                                      *scroll.is_enabled()*
 All groups are defined with `default = true`, so your own definitions win.
 
 ScrollTrack             Track. Links to |hl-PmenuSbar|.
-ScrollThumb             Thumb. Links to |hl-PmenuThumb|.
+ScrollThumb             Thumb. Links to |hl-PmenuThumb|. The glyph is drawn
+                        in its foreground (the |hl-Normal| foreground if it
+                        has none) over the track's background.
 ScrollThumbHover        Thumb under the pointer.
 ScrollMarkError         Diagnostic marks. Link to the matching
 ScrollMarkWarn          `Diagnostic*` groups.
