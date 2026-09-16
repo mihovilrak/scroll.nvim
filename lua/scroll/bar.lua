@@ -27,6 +27,16 @@ function Bar:is_valid()
   return self.win ~= nil and vim.api.nvim_win_is_valid(self.win)
 end
 
+--- Whether `char` is a block element ("█", "▐", ...), which fills its part of
+--- the cell with colour. Thin glyphs such as "┃" do not, and a coloured
+--- background under a mark would make the thumb look thicker there.
+--- @param char string
+--- @return boolean
+local function is_block(char)
+  local cp = vim.fn.char2nr(char)
+  return cp >= 0x2580 and cp <= 0x259F
+end
+
 --- Build the buffer contents and the thumb's byte range.
 ---
 --- The lines are constructed here rather than highlighted in place so the byte
@@ -76,14 +86,19 @@ local function paint(buf, ns, opts)
     priority = 200,
   })
 
-  -- Ruler marks replace the glyph in their cell but keep its background
-  -- (`combine`), so a mark reads the same on the track and on the thumb.
+  -- Ruler marks replace the glyph in their cell. On the track they keep its
+  -- background (`combine`). On a block thumb they sit on the thumb's colour,
+  -- so a half-cell git mark halves the thumb there rather than erasing it.
+  local under = opts.hovered and highlight.THUMB_UNDER_HOVER or highlight.THUMB_UNDER
+  local block_thumb = opts.char and is_block(opts.char)
   for _, m in ipairs(opts.marks or {}) do
     -- Every cell in a row is the same glyph, so its byte length gives the
     -- column's byte offset.
     local glyph_bytes = #lines[m.row + 1] / opts.width
+    local on_thumb = block_thumb and m.row >= opts.pos and m.row < opts.pos + opts.size
     vim.api.nvim_buf_set_extmark(buf, ns, m.row, m.col * glyph_bytes, {
-      virt_text = { { m.char, m.hl } },
+      -- Later groups in the list win, so `under` sets the background only.
+      virt_text = { { m.char, on_thumb and { m.hl, under } or m.hl } },
       virt_text_pos = "overlay",
       hl_mode = "combine",
       priority = 300,

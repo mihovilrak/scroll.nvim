@@ -24,7 +24,7 @@ edges:
 - a vertical bar, which doubles as an overview ruler marking diagnostics, git
   changes and search matches across the whole buffer;
 - a horizontal bar, shown when 'wrap' is off and lines run past the edge;
-- an optional plain minimap with a git change gutter.
+- an optional minimap in the buffer's colours, with a git change gutter.
 
 Bars can be clicked and dragged, and hide when idle by default.
 
@@ -109,9 +109,14 @@ marks ~
                                                        *scroll-option-minimap*
 minimap ~
     `enabled`           Boolean, default `false`.
-    `width`             Columns including the git gutter, default `20`.
-    `columns_per_dot`   Text columns per braille dot column, default `2`.
-                        Each braille cell covers 4 buffer lines.
+    `width`             Columns including the git gutter, default `14`.
+    `columns_per_dot`   Text columns per braille dot column, default `3`.
+                        Each braille cell covers 4 buffer lines. `2` keeps
+                        the text's proportions but needs a wider map.
+    `colors`            Boolean, default `true`. Colour each cell with the
+                        highlight group covering most of its text, from
+                        treesitter or else |:syntax|. `false` draws the
+                        whole map in `ScrollMinimap`.
     `min_window_width`  Default `80`. Narrower windows get no minimap.
     `git`               Boolean, default `true`. Show the git gutter.
     `git_char`          Default `"▎"`.
@@ -209,7 +214,8 @@ ScrollMarkSearch        Search marks. Foreground taken from |hl-Search|.
 ScrollMarkAdd           Git marks. Link to `GitSigns*` when the
 ScrollMarkChange        colorscheme defines them, otherwise to
 ScrollMarkDelete        `Added`, `Changed` and `Removed`.
-ScrollMinimap           Minimap. Links to |hl-NormalFloat|.
+ScrollMinimap           Minimap, and its dots when `colors` is off. Links
+                        to |hl-NormalFloat|.
 ScrollMinimapViewport   Visible region in the minimap. Links to |hl-Visual|.
 
 ==============================================================================

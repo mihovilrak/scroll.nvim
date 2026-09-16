@@ -5,7 +5,21 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options; such changes are listed under **Changed**.
 
-## [Unreleased]
+## [0.2.0] - 2026-09-16
+
+### Added
+
+- `minimap.colors` (on by default): the minimap takes the buffer's treesitter or `:syntax` colours.
+
+### Changed
+
+- The minimap is narrower by default: `width` 20 -> 14 and `columns_per_dot` 2 -> 3, so it still
+  shows the first 78 text columns. Set `width = 20, columns_per_dot = 2` for the old look.
+
+### Fixed
+
+- Ruler marks on the thumb no longer erase it: a git mark now covers only half the cell, and the
+  thumb shows in the other half.
 
 ## [0.1.0] - 2026-09-16
 

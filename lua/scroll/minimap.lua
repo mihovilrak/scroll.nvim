@@ -7,9 +7,10 @@
 ---
 --- Only the rows actually on screen are rendered -- about 4 * height lines per
 --- refresh, regardless of buffer size -- and rendered rows are cached per
---- changedtick, so scrolling mostly reuses them. Deliberately plain: no
---- syntax colours, and folds and wrapping are ignored (a row is always 4
---- buffer lines).
+--- changedtick, so scrolling mostly reuses them. With `colors`, each cell
+--- takes the highlight group covering most of its text, from treesitter or
+--- else `:syntax`. Folds and wrapping are ignored (a row is always 4 buffer
+--- lines).
 local config = require("scroll.config")
 local git = require("scroll.marks.git")
 local highlight = require("scroll.highlight")
@@ -35,14 +36,17 @@ local DOT = {
 
 --- Set the dots of dot row `y` for `line` into `cells` (0-based cell index ->
 --- bit pattern). Tabs are expanded; any other character counts as one
---- column, so double-width text is slightly compressed.
+--- column, so double-width text is slightly compressed. With `groups` (byte
+--- index -> highlight group), also tally each cell's groups into `counts`.
 --- @param line string
 --- @param y integer
 --- @param cells table<integer, integer>
 --- @param ncells integer
 --- @param per_dot integer  display columns per dot column
 --- @param tabstop integer
-local function plot(line, y, cells, ncells, per_dot, tabstop)
+--- @param groups table<integer, string>|nil
+--- @param counts table<integer, table<string, integer>>
+local function plot(line, y, cells, ncells, per_dot, tabstop, groups, counts)
   local limit = ncells * 2 * per_dot
   local col = 0
   for i = 1, #line do
@@ -54,6 +58,15 @@ local function plot(line, y, cells, ncells, per_dot, tabstop)
         local x = math.floor(col / per_dot)
         local cell = math.floor(x / 2)
         cells[cell] = bit.bor(cells[cell] or 0, DOT[x % 2][y])
+        local group = groups and groups[i]
+        if group then
+          local tally = counts[cell]
+          if not tally then
+            tally = {}
+            counts[cell] = tally
+          end
+          tally[group] = (tally[group] or 0) + 1
+        end
       end
       col = col + 1
     end
@@ -68,20 +81,200 @@ end
 --- @param ncells integer  braille cells in the row
 --- @param per_dot integer
 --- @param tabstop integer
---- @return string
-function M.encode(lines, ncells, per_dot, tabstop)
-  local cells = {}
+--- @param groups (table<integer, string>|false)[]|nil  per line, byte index -> highlight group
+--- @return string text
+--- @return { [1]: integer, [2]: integer, [3]: string }[] spans  0-based cell ranges (end exclusive) and their group
+function M.encode(lines, ncells, per_dot, tabstop, groups)
+  local cells, counts = {}, {}
   for y = 0, M.LINES_PER_ROW - 1 do
     local line = lines[y + 1]
     if line and line ~= "" then
-      plot(line, y, cells, ncells, per_dot, tabstop)
+      plot(line, y, cells, ncells, per_dot, tabstop, groups and groups[y + 1] or nil, counts)
     end
   end
-  local out = {}
+  local out, spans = {}, {}
+  local last = nil
   for c = 0, ncells - 1 do
     out[c + 1] = GLYPH[(cells[c] or 0) + 1]
+    local best, most = nil, 0
+    for group, n in pairs(counts[c] or {}) do
+      -- Ties go to the alphabetically first group, so the result is stable.
+      if n > most or (n == most and group < best) then
+        best, most = group, n
+      end
+    end
+    if best then
+      if last and last[2] == c and last[3] == best then
+        last[2] = c + 1
+      else
+        last = { c, c + 1, best }
+        spans[#spans + 1] = last
+      end
+    end
   end
-  return table.concat(out)
+  return table.concat(out), spans
+end
+
+--- Where the buffer's colours come from: "treesitter", "syntax:<name>", or
+--- nil when colours are off or the buffer has none.
+--- @param buf integer
+--- @return string|nil
+local function color_source(buf)
+  if not config.options.minimap.colors then
+    return nil
+  end
+  if vim.treesitter.highlighter.active[buf] then
+    return "treesitter"
+  end
+  local syntax = vim.b[buf].current_syntax
+  if syntax and vim.g.syntax_on then
+    return "syntax:" .. syntax
+  end
+  return nil
+end
+
+--- Treesitter captures to leave out: they carry no colour of their own.
+local SKIP_CAPTURE = { spell = true, nospell = true, conceal = true }
+
+--- Buffers with a background parse under way, and how many have finished.
+--- @type table<integer, true>
+local parsing = {}
+--- @type table<integer, integer>
+local parsed = {}
+
+--- Whether `buf`'s trees are up to date for rows `first .. last - 1`. If not,
+--- start a background parse that calls `on_update` when done: after an edit
+--- a big file can take hundreds of milliseconds to reparse, which must not
+--- block a refresh.
+local function ts_ready(buf, parser, first, last, on_update)
+  local range = { first, last }
+  if parser:is_valid(false, range) then
+    return true
+  end
+  if not parsing[buf] then
+    parsing[buf] = true
+    parser:parse(range, function(_, trees)
+      parsing[buf] = nil
+      if trees then
+        parsed[buf] = (parsed[buf] or 0) + 1
+        if on_update then
+          on_update()
+        end
+      end
+    end)
+  end
+  -- The parse finishes synchronously when `vim.g._ts_force_sync_parsing` is set.
+  return parser:is_valid(false, range)
+end
+
+--- Fill `out` (per line of `lines`, byte index -> group) from treesitter.
+--- @param buf integer
+--- @param first integer  0-based buffer row of `lines[1]`
+--- @param lines string[]
+--- @param out table<integer, string>[]
+--- @return boolean final  false when drawn from outdated trees
+local function treesitter_groups(buf, first, lines, out, on_update)
+  local last = first + #lines -- exclusive
+  local parser = vim.treesitter.highlighter.active[buf].tree
+  local final = ts_ready(buf, parser, first, last, on_update)
+  parser:for_each_tree(function(tstree, ltree)
+    local lang = ltree:lang()
+    local query = vim.treesitter.query.get(lang, "highlights")
+    local root = tstree and tstree:root()
+    if not query or not root then
+      return
+    end
+    local root_start, _, root_end = root:range()
+    if root_end < first or root_start >= last then
+      return
+    end
+    -- Captures come in pattern order, later ones overriding, as in the
+    -- highlighter itself; injected trees come after their parent.
+    for id, node in query:iter_captures(root, buf, first, last) do
+      local name = query.captures[id]
+      if name:byte(1) ~= 95 and not SKIP_CAPTURE[name] then -- 95 = "_"
+        local group = "@" .. name .. "." .. lang
+        local sr, sc, er, ec = node:range()
+        for row = math.max(sr, first), math.min(er, last - 1) do
+          local i = row - first + 1
+          local to = row == er and ec or #lines[i]
+          local groups = out[i]
+          for b = (row == sr and sc or 0) + 1, to do
+            groups[b] = group
+          end
+        end
+      end
+    end
+  end)
+  return final
+end
+
+--- Fill `out` from `:syntax`, one lookup per word, and only as far into each
+--- line as the map can show.
+--- @param buf integer
+--- @param first integer
+--- @param lines string[]
+--- @param out table<integer, string>[]
+--- @param limit integer  display columns shown
+--- @param tabstop integer
+local function syntax_groups(buf, first, lines, out, limit, tabstop)
+  local names = {}
+  vim.api.nvim_buf_call(buf, function()
+    for i, line in ipairs(lines) do
+      local groups = out[i]
+      local col, in_word, group = 0, false, nil
+      for b = 1, #line do
+        local byte = line:byte(b)
+        if byte == 32 or byte == 9 then
+          in_word = false
+          col = byte == 9 and col + tabstop - col % tabstop or col + 1
+        else
+          if not in_word then
+            in_word = true
+            local id = vim.fn.synID(first + i, b, 1)
+            if names[id] == nil then
+              names[id] = id ~= 0 and vim.fn.synIDattr(id, "name") or false
+            end
+            group = names[id] or nil
+          end
+          groups[b] = group
+          if byte < 0x80 or byte >= 0xC0 then
+            col = col + 1
+          end
+        end
+        if col >= limit then
+          break
+        end
+      end
+    end
+  end)
+end
+
+--- Highlight groups for `lines` (buffer rows from 0-based `first`), per line
+--- as byte index -> group, or nil when the map is not coloured.
+--- @return table<integer, string>[]|nil groups
+--- @return boolean final  false when a parse is pending and the rows should not be cached
+local function groups_for(buf, source, first, lines, limit, tabstop, on_update)
+  if not source then
+    return nil, true
+  end
+  local out = {}
+  for i = 1, #lines do
+    out[i] = {}
+  end
+  local ok, final
+  if source == "treesitter" then
+    ok, final = pcall(treesitter_groups, buf, first, lines, out, on_update)
+  else
+    ok, final = pcall(syntax_groups, buf, first, lines, out, limit, tabstop)
+    final = true
+  end
+  if not ok then
+    -- A broken parser or query should cost the colours, not the map.
+    vim.notify_once("scroll.nvim: minimap colours unavailable: " .. tostring(final), vim.log.levels.WARN)
+    return nil, true
+  end
+  return out, final
 end
 
 --- Which minimap rows are on screen, and where the viewport is among them.
@@ -159,17 +352,19 @@ function M.line_at(map, row)
   return (map.offset + row) * M.LINES_PER_ROW + 1
 end
 
---- @type table<integer, { key: string, rows: table<integer, string> }>
+--- @type table<integer, { key: string, rows: table<integer, string>, spans: table<integer, table> }>
 local rendered = {}
 
---- Text of map rows `offset .. offset + height - 1` for `buf`.
-local function rows_for(buf, offset, height, ncells)
+--- Text and colour spans of map rows `offset .. offset + height - 1` for `buf`.
+local function rows_for(buf, offset, height, ncells, on_update)
   local mm = config.options.minimap
   local tabstop = vim.bo[buf].tabstop
-  local key = table.concat({ vim.api.nvim_buf_get_changedtick(buf), ncells, mm.columns_per_dot, tabstop }, ":")
+  local source = color_source(buf)
+  local key =
+    table.concat({ vim.api.nvim_buf_get_changedtick(buf), ncells, mm.columns_per_dot, tabstop, source or "" }, ":")
   local cache = rendered[buf]
   if not cache or cache.key ~= key then
-    cache = { key = key, rows = {} }
+    cache = { key = key, rows = {}, spans = {} }
     rendered[buf] = cache
   end
 
@@ -187,31 +382,42 @@ local function rows_for(buf, offset, height, ncells)
     end
   end
 
+  -- Rows drawn while a parse is pending are shown once but not kept.
+  local fresh = cache
   if missing_from then
     -- One fetch covers every uncached row from the first gap down.
     local last_row = offset + height - 1
-    local lines = vim.api.nvim_buf_get_lines(buf, missing_from * per_row, (last_row + 1) * per_row, false)
+    local first = missing_from * per_row
+    local lines = vim.api.nvim_buf_get_lines(buf, first, (last_row + 1) * per_row, false)
+    local groups, final = groups_for(buf, source, first, lines, ncells * 2 * mm.columns_per_dot, tabstop, on_update)
+    if not final then
+      fresh = { rows = {}, spans = {} }
+    end
     for r = missing_from, last_row do
       if not cache.rows[r] then
         local base = (r - missing_from) * per_row
         if base >= #lines then
           break
         end
-        cache.rows[r] = M.encode(
+        fresh.rows[r], fresh.spans[r] = M.encode(
           { lines[base + 1], lines[base + 2], lines[base + 3], lines[base + 4] },
           ncells,
           mm.columns_per_dot,
-          tabstop
+          tabstop,
+          groups and { groups[base + 1], groups[base + 2], groups[base + 3], groups[base + 4] }
         )
       end
     end
   end
 
   local blank = string.rep(" ", ncells)
+  local spans = {}
   for i = 0, height - 1 do
-    out[i + 1] = cache.rows[offset + i] or blank
+    local r = offset + i
+    out[i + 1] = cache.rows[r] or fresh.rows[r] or blank
+    spans[i + 1] = cache.spans[r] or fresh.spans[r]
   end
-  return out
+  return out, spans
 end
 
 --- Git change kind per map row, most significant first.
@@ -245,7 +451,7 @@ end
 local function paint(float_buf, ns, opts)
   local map, height = opts.map, opts.height
   local ncells = opts.width - 1 -- first column is the git gutter
-  local rows = rows_for(opts.source, map.offset, height, ncells)
+  local rows, spans = rows_for(opts.source, map.offset, height, ncells, opts.on_update)
   local lines = {}
   for i, text in ipairs(rows) do
     lines[i] = " " .. text
@@ -253,6 +459,18 @@ local function paint(float_buf, ns, opts)
   vim.api.nvim_buf_set_lines(float_buf, 0, -1, false, lines)
   vim.api.nvim_buf_clear_namespace(float_buf, ns, 0, -1)
 
+  -- Each braille glyph is 3 bytes, after the 1-byte gutter.
+  for i, row_spans in pairs(spans) do
+    for _, span in ipairs(row_spans) do
+      vim.api.nvim_buf_set_extmark(float_buf, ns, i - 1, 1 + 3 * span[1], {
+        end_col = 1 + 3 * span[2],
+        hl_group = span[3],
+        -- Above the viewport, so a `Visual` with its own foreground does not
+        -- wash the colours out of the visible region.
+        priority = 200,
+      })
+    end
+  end
   for row = math.max(0, map.view_top), map.view_bottom do
     vim.api.nvim_buf_set_extmark(float_buf, ns, row, 0, {
       line_hl_group = highlight.MINIMAP_VIEWPORT,
@@ -289,6 +507,7 @@ function M.bar_opts(win, info, map, on_update)
     source = buf,
     map = map,
     gutter = gutter,
+    on_update = on_update,
     paint = paint,
     content_sig = table.concat({
       buf,
@@ -299,6 +518,8 @@ function M.bar_opts(win, info, map, on_update)
       git_sig,
       mm.columns_per_dot,
       vim.bo[buf].tabstop,
+      color_source(buf) or "",
+      parsed[buf] or 0,
     }, ":"),
   }
 end
@@ -306,10 +527,14 @@ end
 --- @param buf integer
 function M.forget(buf)
   rendered[buf] = nil
+  parsing[buf] = nil
+  parsed[buf] = nil
 end
 
 function M.reset()
   rendered = {}
+  parsing = {}
+  parsed = {}
 end
 
 return M

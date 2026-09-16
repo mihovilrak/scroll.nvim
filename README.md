@@ -3,7 +3,7 @@
 VS Code-style scrollbars for Neovim, **vertical and horizontal** overlaid on the window edges,
 draggable with the mouse, and auto-hiding when idle. The vertical track doubles as an **overview
 ruler**, marking diagnostics, git changes and search matches across the whole buffer, and an
-optional plain **minimap** shows the buffer's shape with a git change gutter.
+optional **minimap** shows the buffer's shape in its syntax colours, with a git change gutter.
 
 Neovim has no built-in scrollbar, and while `nvim-scrollview` covers the vertical case, nothing
 provides a horizontal one. With `wrap` off, the only cue that a line runs past the right edge is the
@@ -118,11 +118,12 @@ require("scroll").setup({
     },
   },
 
-  -- Plain minimap, overlaid left of the vertical bar. Off by default.
+  -- Braille minimap, overlaid left of the vertical bar. Off by default.
   minimap = {
     enabled = false,
-    width = 20,             -- columns, including the 1-column git gutter
-    columns_per_dot = 2,    -- text columns per braille dot column
+    width = 14,             -- columns, including the 1-column git gutter
+    columns_per_dot = 3,    -- text columns per braille dot column
+    colors = true,          -- colour cells like the buffer text; false = all ScrollMinimap
     min_window_width = 80,  -- not drawn in narrower windows
     git = true,             -- git change gutter
     git_char = "▎",
@@ -159,6 +160,7 @@ Ruler marks: `ScrollMarkError` / `Warn` / `Info` / `Hint` (linked to the `Diagno
 a foreground).
 
 Minimap: `ScrollMinimap` (linked to `NormalFloat`) and `ScrollMinimapViewport` (linked to `Visual`).
+With `minimap.colors`, the dots use the buffer's own highlight groups instead of `ScrollMinimap`.
 
 All are defined with `default = true`, so your own `:highlight` wins and survives a `ColorScheme`
 change.
@@ -173,13 +175,17 @@ write and when Neovim regains focus.
 ### Minimap
 
 Each braille cell covers 4 buffer lines and `2 * columns_per_dot` text columns; a dot is lit when its
-block contains any non-blank character. It is deliberately plain: no syntax colours, and folds and
-wrapping are ignored. The map scrolls in proportion to the window, the visible region is
+block contains any non-blank character. The defaults (14 columns, 3 per dot) show the first 78 text
+columns; `columns_per_dot = 2` keeps the text's proportions but needs about `width = 20` for the same
+span. With `colors` on, each cell takes the highlight group covering most of its text, from
+treesitter when it is highlighting the buffer and from `:syntax` otherwise. Folds and wrapping are
+ignored. The map scrolls in proportion to the window, the visible region is
 highlighted, and clicking or dragging on it centres the window on that spot. The horizontal
 scrollbar stops where the minimap begins.
 
 Only the rows on screen are rendered (about `4 * height` lines per refresh, whatever the buffer
-size), and rendered rows are cached until the buffer changes.
+size), and rendered rows are cached until the buffer changes. After an edit, treesitter reparses in
+the background; until it finishes, colours come from the previous parse.
 
 ### Commands
 

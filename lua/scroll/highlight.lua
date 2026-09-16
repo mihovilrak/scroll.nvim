@@ -13,6 +13,9 @@ M.THUMB_HOVER = "ScrollThumbHover"
 --- Internal: what the thumb's cells are actually drawn with. See `setup`.
 M.THUMB_CELL = "ScrollThumbCell"
 M.THUMB_CELL_HOVER = "ScrollThumbCellHover"
+--- Internal: the thumb's colour as a background, for ruler marks on the thumb.
+M.THUMB_UNDER = "ScrollThumbUnder"
+M.THUMB_UNDER_HOVER = "ScrollThumbUnderHover"
 
 M.MINIMAP = "ScrollMinimap"
 M.MINIMAP_VIEWPORT = "ScrollMinimapViewport"
@@ -79,6 +82,12 @@ function M.setup()
   for cell, source in pairs({ [M.THUMB_CELL] = M.THUMB, [M.THUMB_CELL_HOVER] = M.THUMB_HOVER }) do
     local hl = get(source)
     vim.api.nvim_set_hl(0, cell, { fg = hl.fg or normal.fg, bg = track_bg, bold = hl.bold })
+  end
+  -- A ruler mark replaces the thumb glyph in its cell. Drawn over this
+  -- background, a half-cell mark such as the git "▌" leaves the other half in
+  -- the thumb's colour instead of the track's, so the thumb stays visible.
+  for under, source in pairs({ [M.THUMB_UNDER] = M.THUMB_CELL, [M.THUMB_UNDER_HOVER] = M.THUMB_CELL_HOVER }) do
+    vim.api.nvim_set_hl(0, under, { bg = get(source).fg })
   end
 
   for group, candidates in pairs(git_links) do

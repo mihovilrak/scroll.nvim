@@ -300,7 +300,7 @@ t.describe("setup accepts booleans and can be called again", function()
   scroll.setup({ visibility = "always", mouse = false, minimap = true, marks = { git = false } })
   local opts = require("scroll.config").options
   t.eq(opts.minimap.enabled, true, "minimap = true enables the minimap")
-  t.eq(opts.minimap.width, 20, "and keeps its other defaults")
+  t.eq(opts.minimap.width, require("scroll.config").defaults.minimap.width, "and keeps its other defaults")
   t.eq(opts.marks.git.enabled, false, "marks.git = false disables git marks")
   t.eq(opts.marks.git.char, "▌", "and keeps its other defaults")
   t.check(scroll.is_enabled(), "a second setup leaves the plugin running")

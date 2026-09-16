@@ -38,7 +38,12 @@ local function braille(bits)
   return vim.fn.nr2char(0x2800 + bits)
 end
 
-scroll.setup({ visibility = "always", mouse = false, minimap = { enabled = true, min_window_width = 50 } })
+-- Width and dot size are pinned so the expectations below do not follow the defaults.
+scroll.setup({
+  visibility = "always",
+  mouse = false,
+  minimap = { enabled = true, min_window_width = 50, width = 20, columns_per_dot = 2 },
+})
 
 t.describe("encode: dots follow the text", function()
   t.eq(minimap.encode({ "ab" }, 1, 1, 8), braille(0x01 + 0x08), "two chars light the top row of one cell")
@@ -51,6 +56,19 @@ t.describe("encode: dots follow the text", function()
   t.eq(minimap.encode({ "éé" }, 1, 1, 8), braille(0x09), "multi-byte characters count once")
   t.eq(minimap.encode({ string.rep("x", 100) }, 2, 1, 8), braille(0x09) .. braille(0x09), "text past the map is cut")
   t.eq(minimap.encode({}, 2, 1, 8), braille(0) .. braille(0), "empty rows are blank braille")
+end)
+
+t.describe("encode: each cell takes its most common group", function()
+  local groups = { { "A", "A", "B" }, { false } }
+  local text, spans = minimap.encode({ "abc", "" }, 2, 1, 8, groups)
+  t.eq(text, braille(0x09) .. braille(0x01), "the dots are unchanged")
+  t.eq(vim.inspect(spans), vim.inspect({ { 0, 1, "A" }, { 1, 2, "B" } }), "one span per group")
+
+  _, spans = minimap.encode({ "abab", "cdcd" }, 2, 1, 8, { { "K", "K", "K", "K" }, { "K", "S", "K", "S" } })
+  t.eq(vim.inspect(spans), vim.inspect({ { 0, 2, "K" } }), "neighbouring cells of one group merge")
+
+  _, spans = minimap.encode({ "ab" }, 1, 1, 8, { {} })
+  t.eq(vim.inspect(spans), vim.inspect({}), "uncoloured text gives no span")
 end)
 
 t.describe("layout: the map scrolls with the window", function()
@@ -154,6 +172,61 @@ t.describe("git changes appear in the gutter", function()
   t.eq(found and found.hl, "ScrollMarkChange", "as a change")
   package.loaded.gitsigns = nil
   vim.b[buf].gitsigns_status_dict = nil
+end)
+
+local function colour_marks(fbuf)
+  local found = {}
+  for _, m in ipairs(vim.api.nvim_buf_get_extmarks(fbuf, -1, 0, -1, { details = true })) do
+    if m[4].hl_group and m[4].end_col then
+      found[#found + 1] = { row = m[2], col = m[3], hl = m[4].hl_group }
+    end
+  end
+  return found
+end
+
+t.describe("the map takes the buffer's treesitter colours", function()
+  vim.cmd("silent! only")
+  local lines = {}
+  for i = 1, 200 do
+    lines[i] = ("local v%d = 'text' -- note"):format(i)
+  end
+  local buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  local win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(win, buf)
+  vim.treesitter.start(buf, "lua")
+  vim.cmd("normal! gg")
+  scroll.refresh()
+  local fbuf = vim.api.nvim_win_get_buf(float_of(win, "minimap"))
+  local groups = {}
+  for _, m in ipairs(colour_marks(fbuf)) do
+    if m.row == 0 then
+      groups[#groups + 1] = m.hl
+    end
+  end
+  -- "local" | " v1 = " | "'text'" | " -- note", 2 dot columns per cell.
+  t.eq(groups[1], "@keyword.lua", "the row starts as a keyword")
+  t.check(vim.tbl_contains(groups, "@string.lua"), "strings keep their colour")
+  t.check(vim.tbl_contains(groups, "@comment.lua"), "and so do comments")
+
+  config.options.minimap.colors = false
+  scroll.refresh()
+  t.eq(#colour_marks(fbuf), 0, "colors = false draws it plain")
+  config.options.minimap.colors = true
+  vim.treesitter.stop(buf)
+end)
+
+t.describe("without treesitter, :syntax colours the map", function()
+  vim.cmd("silent! only")
+  vim.cmd("syntax on")
+  local buf, win = fill(200, "if x then ")
+  vim.bo[buf].syntax = "lua"
+  vim.cmd("normal! gg")
+  scroll.refresh()
+  local marks = colour_marks(vim.api.nvim_win_get_buf(float_of(win, "minimap")))
+  t.check(#marks > 0, "cells are coloured")
+  t.eq(marks[1] and marks[1].hl, "luaCond", "by syntax group")
+  vim.cmd("syntax off")
 end)
 
 t.describe("the horizontal track stops at the minimap", function()

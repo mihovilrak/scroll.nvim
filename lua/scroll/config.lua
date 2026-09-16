@@ -51,8 +51,13 @@ M.defaults = {
   --- `:ScrollMinimapToggle`.
   minimap = {
     enabled = false,
-    width = 20, -- columns, including the 1-column git gutter
-    columns_per_dot = 2, -- text columns per braille dot column
+    width = 14, -- columns, including the 1-column git gutter
+    --- Text columns per braille dot column. At 3, 13 cells show 78 columns;
+    --- 2 keeps the text's proportions but needs a wider map for the same span.
+    columns_per_dot = 3,
+    --- Colour each cell like the buffer text it covers (treesitter, else
+    --- `:syntax`). Off draws the whole map in `ScrollMinimap`.
+    colors = true,
     min_window_width = 80, -- not drawn in narrower windows
     git = true,
     git_char = "▎",
@@ -115,6 +120,7 @@ local function validate(opts)
   vim.validate("minimap.width", opts.minimap.width, function(v)
     return type(v) == "number" and v >= 2
   end, "a number >= 2")
+  vim.validate("minimap.colors", opts.minimap.colors, "boolean")
   vim.validate("minimap.columns_per_dot", opts.minimap.columns_per_dot, function(v)
     return type(v) == "number" and v >= 1
   end, "a number >= 1")

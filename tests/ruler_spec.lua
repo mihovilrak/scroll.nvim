@@ -129,6 +129,52 @@ t.describe("marks are drawn into the bar float", function()
   t.check(found, "an overlay extmark carries the error tick")
 end)
 
+t.describe("a git mark on the thumb halves it instead of hiding it", function()
+  vim.cmd("silent! only")
+  local buf, win = fill(500)
+  package.loaded.gitsigns = {
+    get_hunks = function()
+      -- Line 1 is under the thumb at the top; line 400 is on the bare track.
+      return {
+        { type = "add", added = { start = 1, count = 2 }, removed = { start = 0, count = 0 } },
+        { type = "add", added = { start = 400, count = 2 }, removed = { start = 0, count = 0 } },
+      }
+    end,
+  }
+  vim.b[buf].gitsigns_status_dict = { head = "main" }
+  vim.api.nvim_exec_autocmds("User", { pattern = "GitSignsUpdate", data = { buffer = buf } })
+  vim.cmd("normal! gg")
+  cells(win)
+  local fbuf = vim.api.nvim_win_get_buf(vertical_float(win))
+  local by_row = {}
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(fbuf, -1, 0, -1, { details = true })) do
+    if mark[4].virt_text then
+      by_row[mark[2]] = mark[4].virt_text[1][2]
+    end
+  end
+  local height = vim.fn.getwininfo(win)[1].height
+  t.eq(vim.inspect(by_row[0]), vim.inspect({ "ScrollMarkAdd", "ScrollThumbUnder" }), "on the thumb: over its colour")
+  t.eq(by_row[math.floor(399 * height / 500)], "ScrollMarkAdd", "on the track: unchanged")
+
+  local thumb = vim.api.nvim_get_hl(0, { name = "ScrollThumbCell", link = false })
+  local under = vim.api.nvim_get_hl(0, { name = "ScrollThumbUnder", link = false })
+  t.eq(under.bg, thumb.fg, "the colour under the mark is the thumb's")
+
+  config.options.vertical.char = "┃"
+  cells(win)
+  by_row = {}
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(fbuf, -1, 0, -1, { details = true })) do
+    if mark[4].virt_text then
+      by_row[mark[2]] = mark[4].virt_text[1][2]
+    end
+  end
+  t.eq(by_row[0], "ScrollMarkAdd", "a thin thumb glyph gets no background")
+  config.options.vertical.char = "█"
+
+  package.loaded.gitsigns = nil
+  vim.b[buf].gitsigns_status_dict = nil
+end)
+
 t.describe("search matches are marked only while highlighted", function()
   vim.cmd("silent! only")
   local _, win = fill(500)
