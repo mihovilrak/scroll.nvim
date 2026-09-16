@@ -17,6 +17,33 @@ M.defaults = {
     track_char = "─",
   },
 
+  --- Overview ruler: ticks on the vertical track marking where things are in
+  --- the whole buffer. Git changes take the track's left column and everything
+  --- else the right; on a 1-column track they share it and the most severe
+  --- mark wins (error > warning > search > info > hint > git).
+  marks = {
+    enabled = true,
+    diagnostics = {
+      enabled = true,
+      char = "━",
+      --- Passed to `vim.diagnostic.get`, e.g. `{ min = vim.diagnostic.severity.WARN }`.
+      severity = nil,
+    },
+    git = {
+      enabled = true,
+      char = "▌",
+      --- Without gitsigns, changes are found by diffing the buffer against the
+      --- index. That costs O(lines), so it is skipped above this size.
+      max_lines = 20000,
+      --- ms of quiet after an edit before re-diffing, without gitsigns.
+      debounce = 200,
+    },
+    search = {
+      enabled = true,
+      char = "━",
+    },
+  },
+
   --- "auto" fade in on activity, hide after `hide_delay` ms of quiet
   --- "always" draw whenever the content overflows
   --- "hover" only while the pointer is near the bar (needs 'mousemoveevent')
@@ -63,6 +90,13 @@ local function validate(opts)
   end, "a number between 0 and 100")
   vim.validate("zindex", opts.zindex, "number")
   vim.validate("mouse", opts.mouse, "boolean")
+  vim.validate("marks", opts.marks, "table")
+  for _, source in ipairs({ "diagnostics", "git", "search" }) do
+    vim.validate("marks." .. source, opts.marks[source], "table")
+    vim.validate("marks." .. source .. ".char", opts.marks[source].char, function(v)
+      return type(v) == "string" and vim.fn.strdisplaywidth(v) == 1
+    end, "a single-cell string")
+  end
 
   if opts.visibility == "hover" and not vim.o.mousemoveevent then
     vim.notify(

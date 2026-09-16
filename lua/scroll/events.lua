@@ -2,6 +2,10 @@
 local highlight = require("scroll.highlight")
 local measure = require("scroll.measure")
 local render = require("scroll.render")
+local ruler = require("scroll.ruler")
+local search = require("scroll.marks.search")
+local diagnostics = require("scroll.marks.diagnostics")
+local git = require("scroll.marks.git")
 local visibility = require("scroll.visibility")
 local width = require("scroll.width")
 
@@ -9,6 +13,7 @@ local M = {}
 
 local group = nil
 local pending = false
+local wake = false
 
 --- Re-entrancy guard. Creating, moving and closing our own floats can emit
 --- window events; without this they would schedule another refresh, which
@@ -26,22 +31,40 @@ end
 --- Ask for a refresh. Many events in one event-loop turn collapse into exactly
 --- one redraw.
 ---
+--- `quiet` refreshes only redraw bars already on screen and do not count as
+--- activity; they are for background changes (diagnostics, git, a finished
+--- scan) that should not pop the bars up by themselves.
+---
 --- `vim.schedule` rather than a debounce timer is deliberate: a single
 --- keystroke can fire TextChangedI, CursorMovedI and WinScrolled together, and
 --- this already collapses them into one pass with no added latency. A
 --- millisecond debounce would only make scrolling feel behind the text.
-function M.schedule()
-  if pending or suspended > 0 then
+--- @param opts { quiet: boolean? }|nil
+function M.schedule(opts)
+  if suspended > 0 then
+    return
+  end
+  if not (opts and opts.quiet) then
+    wake = true
+  end
+  if pending then
     return
   end
   pending = true
   vim.schedule(function()
     pending = false
+    local woke = wake
+    wake = false
     if suspended > 0 then
       return
     end
     M.suspend()
-    local ok, err = pcall(visibility.on_activity)
+    local ok, err
+    if woke then
+      ok, err = pcall(visibility.on_activity)
+    else
+      ok, err = pcall(render.refresh_all, true)
+    end
     M.resume()
     if not ok then
       vim.notify("scroll.nvim: " .. tostring(err), vim.log.levels.ERROR)
@@ -62,7 +85,7 @@ local function au(event, opts)
         opts.handler(args)
       end
       if opts.refresh ~= false then
-        M.schedule()
+        M.schedule({ quiet = opts.quiet })
       end
     end,
   })
@@ -89,6 +112,40 @@ function M.enable()
     handler = function()
       measure.reset()
     end,
+  })
+
+  -- Ruler sources. These change in the background, so they redraw quietly.
+  au("DiagnosticChanged", {
+    handler = function(args)
+      diagnostics.invalidate(args.buf)
+    end,
+    quiet = true,
+  })
+  au("User", {
+    pattern = "GitSignsUpdate",
+    handler = function(args)
+      local buf = args.data and args.data.buffer
+      if buf then
+        git.gitsigns_updated(buf)
+      end
+    end,
+    quiet = true,
+  })
+  au({ "BufWritePost", "BufReadPost" }, {
+    handler = function(args)
+      git.refetch(args.buf)
+    end,
+    quiet = true,
+  })
+  au("FocusGained", {
+    handler = function()
+      git.refetch_all()
+    end,
+    quiet = true,
+  })
+  au("OptionSet", {
+    pattern = "hlsearch,ignorecase,smartcase",
+    quiet = true,
   })
 
   au("ColorScheme", {
@@ -123,6 +180,7 @@ function M.enable()
   au({ "BufDelete", "BufWipeout" }, {
     handler = function(args)
       width.forget(args.buf)
+      ruler.forget_buf(args.buf)
     end,
     refresh = false,
   })
@@ -137,9 +195,14 @@ function M.enable()
 
   -- Cheap idle self-healing: reap bars whose window vanished without a
   -- WinClosed we saw (it can be missed during `:qa`).
+  -- Also the only reliable place to notice the search highlight changing:
+  -- `:nohlsearch`, `n`, `*` and mappings that set `@/` have no event.
   au("SafeState", {
     handler = function()
       render.prune()
+      if search.state_changed() then
+        M.schedule({ quiet = true })
+      end
     end,
     refresh = false,
   })
@@ -158,11 +221,13 @@ function M.disable()
     group = nil
   end
   pending = false
+  wake = false
   suspended = 0
   visibility.stop()
   render.clear_all()
   measure.reset()
   width.reset()
+  ruler.reset()
 end
 
 return M

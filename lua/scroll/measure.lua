@@ -22,7 +22,7 @@ local config = require("scroll.config")
 
 local M = {}
 
---- @type table<integer, { key: string, total: integer, topline: integer, above: integer }>
+--- @type table<integer, { key: string, total: integer, topline: integer, above: integer, folds: table<integer, integer> }>
 local cache = {}
 
 --- Everything that can change a buffer's rendered height without it being
@@ -42,6 +42,35 @@ local function cache_key(win, buf)
     wo.foldlevel,
     vim.bo[buf].tabstop,
   }, ":")
+end
+
+--- Whether a fold was opened, closed, created or deleted since `entry` was
+--- measured. None of those fire an event or touch an option, so the cache key
+--- cannot see them. (`zM`/`zR` change 'foldlevel' and are caught by the key.)
+---
+--- Only the visible lines are walked, O(height), but what each line looked
+--- like is remembered across scrolls in `entry.seen`: the last line of its
+--- closed fold, or `false` when it was not folded. A line that merely scrolls
+--- into view has no record and costs nothing; a line whose fold state
+--- disagrees with its record means the folds changed.
+local function folds_changed(win, entry, topline, botline)
+  local seen = entry.seen
+  return vim.api.nvim_win_call(win, function()
+    local l = topline
+    while l <= botline do
+      local state = false
+      if vim.fn.foldclosed(l) ~= -1 then
+        state = vim.fn.foldclosedend(l)
+      end
+      if seen[l] == nil then
+        seen[l] = state
+      elseif seen[l] ~= state then
+        return true
+      end
+      l = state and state + 1 or l + 1
+    end
+    return false
+  end)
 end
 
 --- Screen rows strictly above line `t` (1-based), excluding any virtual-line
@@ -140,11 +169,19 @@ function M.vertical(win)
 
   local key = cache_key(win, buf)
   local entry = cache[win]
-  if not entry or entry.key ~= key then
+  local folded = vim.wo[win].foldenable
+  if
+    not entry
+    or entry.key ~= key
+    or (folded and folds_changed(win, entry, info.topline, info.botline))
+  then
     -- Anything that changes rendered height invalidates both the total and
     -- the anchor the telescoping walks from.
-    entry = { key = key, total = vim.api.nvim_win_text_height(win, {}).all }
+    entry = { key = key, total = vim.api.nvim_win_text_height(win, {}).all, seen = {} }
     cache[win] = entry
+    if folded then
+      folds_changed(win, entry, info.topline, info.botline) -- record the new state
+    end
   end
 
   local view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
@@ -178,6 +215,51 @@ function M.topline_at(win, target)
   -- the error is at most a few lines and the user is steering visually.
   local line = math.floor(target / math.max(total, 1) * line_count + 0.5) + 1
   return math.max(1, math.min(line_count, line))
+end
+
+--- Screen rows above each of `lines`, in the same units as `vertical().total`.
+--- Used to place overview-ruler marks, which do not move when scrolling, so
+--- this runs only when the marks or the document change.
+---
+--- Same strategy as `rows_above`: identity when the buffer renders one row per
+--- line, exact telescoping for buffers up to `exact_measure_max_lines`, and
+--- interpolation beyond that. A line past the end maps to `total`.
+--- @param win integer
+--- @param lines integer[]  1-based, ascending
+--- @param total integer
+--- @return integer[]
+function M.rows_above_lines(win, lines, total)
+  local buf = vim.api.nvim_win_get_buf(win)
+  local line_count = vim.api.nvim_buf_line_count(buf)
+  local out = {}
+
+  if total == line_count or line_count > config.options.exact_measure_max_lines then
+    for i, l in ipairs(lines) do
+      out[i] = l > line_count and total or math.floor((l - 1) / line_count * total + 0.5)
+    end
+    return out
+  end
+
+  local prev, above = 1, 0
+  for i, l in ipairs(lines) do
+    if l > line_count then
+      out[i] = total
+    else
+      above = above + delta(win, prev, l)
+      prev = l
+      out[i] = above
+    end
+  end
+  return out
+end
+
+--- Identifies the measurement currently cached for `win`; changes whenever
+--- `total` might have.
+--- @param win integer
+--- @return string
+function M.signature(win)
+  local entry = cache[win]
+  return entry and (entry.key .. ":" .. entry.total) or ""
 end
 
 --- @param win integer

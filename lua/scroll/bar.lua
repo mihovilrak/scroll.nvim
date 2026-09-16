@@ -68,6 +68,18 @@ local function paint(buf, opts)
     hl_eol = true,
     priority = 200,
   })
+
+  -- Ruler marks replace the glyph in their cell but keep its background
+  -- (`combine`), so a mark reads the same on the track and on the thumb.
+  for _, m in ipairs(opts.marks or {}) do
+    local glyph = (m.row >= opts.pos and m.row < opts.pos + opts.size) and opts.char or opts.track_char
+    vim.api.nvim_buf_set_extmark(buf, ns, m.row, m.col * #glyph, {
+      virt_text = { { m.char, m.hl } },
+      virt_text_pos = "overlay",
+      hl_mode = "combine",
+      priority = 300,
+    })
+  end
 end
 
 --- Create or reposition the float and redraw the thumb.
@@ -81,12 +93,15 @@ end
 ---   length      cells along the bar's axis (height for vertical, width for horizontal)
 ---   pos,size    thumb placement along that axis
 ---   char, track_char, winblend, zindex, hovered
+---   marks       ruler cells `{ row, col, char, hl }` (vertical only)
+---   marks_sig   changes whenever `marks` does
 function Bar:update(parent, opts)
   -- Skip the redraw entirely when nothing observable changed. Scroll events
   -- fire far more often than the thumb actually moves.
   local sig = table.concat({
     parent, opts.row, opts.col, opts.width, opts.height,
     opts.pos, opts.size, tostring(opts.hovered), opts.char, opts.track_char,
+    opts.marks_sig or "",
   }, ":")
   if self.drawn == sig and self:is_valid() and not self.hidden then
     return

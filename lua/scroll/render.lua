@@ -3,6 +3,7 @@ local Bar = require("scroll.bar")
 local config = require("scroll.config")
 local geometry = require("scroll.geometry")
 local measure = require("scroll.measure")
+local ruler = require("scroll.ruler")
 local util = require("scroll.util")
 local width = require("scroll.width")
 
@@ -88,15 +89,95 @@ function M.compute(win)
   return result
 end
 
+--- A source finished work in the background. Redraw the bars that are on
+--- screen, without waking hidden ones: an LSP publishing diagnostics while
+--- you read should not flash the bars up.
+local function marks_updated()
+  require("scroll.events").schedule({ quiet = true })
+end
+
 --- @param win integer
-function M.refresh(win)
+--- @param entry table  the window's bars
+--- @param computed table  from `compute`
+--- @param hovered boolean
+local function draw_vertical(win, entry, computed, hovered)
+  local opts = config.options
+  local info, v = computed.info, computed.vertical
+  if not v then
+    if entry.vertical then
+      entry.vertical:hide()
+    end
+    return
+  end
+
+  local marks, marks_sig = ruler.cells(win, info.height, v.total, marks_updated)
+  entry.vertical = entry.vertical or Bar.new()
+  entry.vertical:update(win, {
+    orientation = "vertical",
+    row = info.winbar, -- relative='win' row 0 is the winbar row
+    col = info.width - opts.vertical.width,
+    width = opts.vertical.width,
+    height = info.height,
+    length = info.height,
+    pos = v.pos,
+    size = v.size,
+    char = opts.vertical.char,
+    track_char = opts.vertical.track_char,
+    winblend = opts.winblend,
+    zindex = opts.zindex,
+    hovered = hovered,
+    marks = marks,
+    marks_sig = marks_sig,
+  })
+end
+
+--- @param win integer
+--- @param entry table  the window's bars
+--- @param computed table  from `compute`
+--- @param hovered boolean
+local function draw_horizontal(win, entry, computed, hovered)
+  local opts = config.options
+  local info, h = computed.info, computed.horizontal
+  if not h then
+    if entry.horizontal then
+      entry.horizontal:hide()
+    end
+    return
+  end
+
+  entry.horizontal = entry.horizontal or Bar.new()
+  entry.horizontal:update(win, {
+    orientation = "horizontal",
+    row = info.winbar + info.height - opts.horizontal.height,
+    col = h.textoff,
+    width = h.track,
+    height = opts.horizontal.height,
+    length = h.track,
+    pos = h.pos,
+    size = h.size,
+    char = opts.horizontal.char,
+    track_char = opts.horizontal.track_char,
+    winblend = opts.winblend,
+    zindex = opts.zindex,
+    hovered = hovered,
+  })
+end
+
+--- @param win integer
+--- @param quiet boolean|nil  only redraw bars that are already showing
+function M.refresh(win, quiet)
   if not util.is_eligible(win) then
     M.clear(win)
     return
   end
 
-  local opts = config.options
   local entry = bars_for(win)
+  -- A quiet refresh leaves hidden (or never drawn) bars alone.
+  local skip_vertical = quiet and (not entry.vertical or entry.vertical.hidden)
+  local skip_horizontal = quiet and (not entry.horizontal or entry.horizontal.hidden)
+  if skip_vertical and skip_horizontal then
+    return
+  end
   local computed = M.compute(win)
   local info = computed.info
   if not info then
@@ -105,54 +186,19 @@ function M.refresh(win)
 
   local hovered_orientation = (M.hover.win == win) and M.hover.orientation or nil
 
-  if computed.vertical then
-    entry.vertical = entry.vertical or Bar.new()
-    entry.vertical:update(win, {
-      orientation = "vertical",
-      row = info.winbar, -- relative='win' row 0 is the winbar row
-      col = info.width - opts.vertical.width,
-      width = opts.vertical.width,
-      height = info.height,
-      length = info.height,
-      pos = computed.vertical.pos,
-      size = computed.vertical.size,
-      char = opts.vertical.char,
-      track_char = opts.vertical.track_char,
-      winblend = opts.winblend,
-      zindex = opts.zindex,
-      hovered = hovered_orientation == "vertical",
-    })
-  elseif entry.vertical then
-    entry.vertical:hide()
+  if not skip_vertical then
+    draw_vertical(win, entry, computed, hovered_orientation == "vertical")
   end
-
-  local h = computed.horizontal
-  if h then
-    entry.horizontal = entry.horizontal or Bar.new()
-    entry.horizontal:update(win, {
-      orientation = "horizontal",
-      row = info.winbar + info.height - opts.horizontal.height,
-      col = h.textoff,
-      width = h.track,
-      height = opts.horizontal.height,
-      length = h.track,
-      pos = h.pos,
-      size = h.size,
-      char = opts.horizontal.char,
-      track_char = opts.horizontal.track_char,
-      winblend = opts.winblend,
-      zindex = opts.zindex,
-      hovered = hovered_orientation == "horizontal",
-    })
-  elseif entry.horizontal then
-    entry.horizontal:hide()
+  if not skip_horizontal then
+    draw_horizontal(win, entry, computed, hovered_orientation == "horizontal")
   end
 end
 
 --- Refresh every ordinary window in the current tabpage.
-function M.refresh_all()
+--- @param quiet boolean|nil  only redraw bars that are already showing
+function M.refresh_all(quiet)
   for _, win in ipairs(util.target_windows()) do
-    M.refresh(win)
+    M.refresh(win, quiet)
   end
 end
 
@@ -190,6 +236,7 @@ function M.clear(win)
     bars[win] = nil
   end
   measure.forget(win)
+  ruler.forget_win(win)
 end
 
 function M.clear_all()
