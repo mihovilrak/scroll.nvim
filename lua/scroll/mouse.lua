@@ -210,7 +210,11 @@ local function scroll_to(win, orientation, track_pos, grab)
       pos = track_pos - grab,
     })
     if computed.kind == "snacks" then
+      -- Rewriting the list fires nothing `WinScrolled` would catch, unlike
+      -- `set_topline` below, so the thumb would otherwise sit still until the
+      -- next idle `SafeState` poll notices and redraws it.
       explorer.scroll_to(win, target + 1)
+      render.refresh(win)
     else
       set_topline(win, measure.topline_at(win, target))
     end
@@ -353,6 +357,14 @@ end
 local function on_wheel(dir)
   local orientation, at = hit_test()
   if not orientation then
+    -- The wheel may still be over a Snacks explorer's list itself (its usual
+    -- target, since the bar is a thin strip at the edge). Nvim scrolls that
+    -- natively with no event we can hook, so nudge our own poll rather than
+    -- let the thumb sit stale until the next idle `SafeState`.
+    local loc = locate()
+    if loc and util.kind(loc.win) == "snacks" then
+      require("scroll.events").schedule()
+    end
     return false
   end
   local win, info = at.win, at.info
@@ -362,6 +374,7 @@ local function on_wheel(dir)
     local delta = dir == "down" and ver or -ver
     if computed.kind == "snacks" then
       explorer.scroll_by(win, delta)
+      render.refresh(win)
     else
       local buf = vim.api.nvim_win_get_buf(win)
       local last = math.max(1, vim.api.nvim_buf_line_count(buf) - (info.botline - info.topline))

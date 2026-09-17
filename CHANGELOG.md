@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options; such changes are listed under **Changed**.
 
+## [0.3.1] - 2026-09-17
+
+### Fixed
+
+- The Snacks explorer's scrollbar thumb could lag behind the list, most visibly getting stuck short
+  of the top: the explorer scrolls by rewriting its list, which fires no event the bar can react to,
+  so with nothing else in the tabpage generating a refresh it only caught up on the next idle
+  `SafeState` poll. Dragging or wheel-scrolling the explorer's bar now refreshes it immediately, and
+  a wheel scroll over the list itself nudges a refresh instead of waiting on `SafeState`.
+
 ## [0.3.0] - 2026-09-17
 
 ### Added
