@@ -397,6 +397,68 @@ t.describe("the Snacks explorer list gets a bar measured from the picker", funct
   scroll.setup({ visibility = "always", mouse = false })
 end)
 
+t.describe("a wheel scroll over the Snacks list redraws without waiting on SafeState", function()
+  -- Snacks intercepts the wheel via `vim.on_key`, before Nvim's mapping layer
+  -- runs, and swallows it on 0.11+ (see snacks/picker/core/list.lua). So our
+  -- own `<ScrollWheelUp/Down>` keymap never fires for it, and only the
+  -- `vim.on_key` watcher below stands in for a real SafeState poll.
+  vim.cmd("silent! only")
+  local list_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, vim.split(string.rep("item\n", 29), "\n"))
+  local list_win = vim.api.nvim_open_win(list_buf, false, {
+    relative = "editor",
+    row = 1,
+    col = 0,
+    width = 30,
+    height = 30,
+    zindex = 60,
+  })
+  local list = {
+    win = { win = list_win },
+    top = 1,
+    count = function()
+      return 300
+    end,
+    scroll = function(self, to, absolute)
+      self.top = absolute and to or self.top + to
+    end,
+  }
+  package.loaded["snacks.picker.core.picker"] = {
+    get = function(opts)
+      return opts.source == "explorer" and { { list = list } } or {}
+    end,
+  }
+  scroll.setup({ visibility = "always", mouse = true, explorer = true })
+  scroll.refresh()
+  t.eq(render.compute(list_win).vertical.pos, 0, "starts at the top of the list")
+
+  -- Floating-window mouse-hit-testing needs a real UI; headless Nvim has
+  -- none, so stub `getmousepos()` rather than fight `nvim_input_mouse` for a
+  -- screen position it cannot resolve. `_watch_wheel` only reads `.winid`
+  -- from it.
+  local real_getmousepos = vim.fn.getmousepos
+  vim.fn.getmousepos = function()
+    return { winid = list_win }
+  end
+
+  -- What Snacks itself would have already done with the real wheel event
+  -- before our `vim.on_key` watcher runs.
+  list.top = 6
+
+  local down = vim.api.nvim_replace_termcodes("<ScrollWheelDown>", true, true, true)
+  require("scroll.mouse")._watch_wheel(down, down)
+  vim.fn.getmousepos = real_getmousepos
+
+  local redrawn = vim.wait(500, function()
+    return render.compute(list_win).vertical.pos > 0
+  end)
+  t.check(redrawn, "the bar catches up with no `explorer.scroll_by` and no SafeState poll")
+
+  package.loaded["snacks.picker.core.picker"] = nil
+  vim.api.nvim_win_close(list_win, true)
+  scroll.setup({ visibility = "always", mouse = false })
+end)
+
 t.describe("setup accepts booleans and can be called again", function()
   scroll.setup({ visibility = "always", mouse = false, minimap = true, marks = { git = false } })
   local opts = require("scroll.config").options

@@ -357,14 +357,6 @@ end
 local function on_wheel(dir)
   local orientation, at = hit_test()
   if not orientation then
-    -- The wheel may still be over a Snacks explorer's list itself (its usual
-    -- target, since the bar is a thin strip at the edge). Nvim scrolls that
-    -- natively with no event we can hook, so nudge our own poll rather than
-    -- let the thumb sit stale until the next idle `SafeState`.
-    local loc = locate()
-    if loc and util.kind(loc.win) == "snacks" then
-      require("scroll.events").schedule()
-    end
     return false
   end
   local win, info = at.win, at.info
@@ -392,6 +384,35 @@ local function on_wheel(dir)
   return true
 end
 
+--- The Snacks explorer's list intercepts the wheel at the `vim.on_key` level
+--- (`snacks/picker/core/list.lua`), before Nvim's mapping layer, and on
+--- 0.11+ swallows it outright (returns `""`) to stop the window scrolling
+--- natively too. That means `<ScrollWheelUp>`/`<ScrollWheelDown>` below never
+--- fires for a wheel scroll over the list itself, which is the common case
+--- since the bar is only the thin strip at the window's edge. Without this,
+--- the thumb would sit stale until the next idle `SafeState` poll notices.
+--- This watches the same way Snacks does and nudges our own poll once
+--- Snacks' own (also deferred) scroll has had a chance to run.
+local SCROLL_WHEEL_UP = vim.api.nvim_replace_termcodes("<ScrollWheelUp>", true, true, true)
+local SCROLL_WHEEL_DOWN = vim.api.nvim_replace_termcodes("<ScrollWheelDown>", true, true, true)
+local wheel_watch_ns = vim.api.nvim_create_namespace("scroll.nvim.wheel_watch")
+
+local function watch_wheel(key, typed)
+  key = typed or key
+  if key ~= SCROLL_WHEEL_UP and key ~= SCROLL_WHEEL_DOWN then
+    return
+  end
+  local win = vim.fn.getmousepos().winid
+  if win ~= 0 and util.kind(win) == "snacks" then
+    -- A timer callback, not another `vim.schedule`, so this reliably runs
+    -- after Snacks' own `vim.schedule`-deferred `list:scroll` regardless of
+    -- which `vim.on_key` listener ran first.
+    vim.defer_fn(function()
+      require("scroll.events").schedule()
+    end, 0)
+  end
+end
+
 local MODES = { "n", "v", "s", "o", "i" }
 
 local handlers = {
@@ -413,6 +434,8 @@ local handlers = {
 }
 
 function M.enable()
+  vim.on_key(watch_wheel, wheel_watch_ns)
+
   for lhs, handler in pairs(handlers) do
     for _, mode in ipairs(MODES) do
       capture(mode, lhs)
@@ -438,6 +461,7 @@ function M.enable()
 end
 
 function M.disable()
+  vim.on_key(nil, wheel_watch_ns)
   drag = nil
   for key in pairs(previous) do
     local mode, lhs = key:sub(1, 1), key:sub(2)
@@ -450,6 +474,7 @@ end
 M._set_topline = set_topline
 M._set_leftcol = set_leftcol
 M._minimap_jump = minimap_jump
+M._watch_wheel = watch_wheel
 M._scroll_to = scroll_to
 
 return M

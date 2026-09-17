@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options; such changes are listed under **Changed**.
 
+## [0.3.2] - 2026-09-17
+
+### Fixed
+
+- The Snacks explorer's scrollbar thumb could still lag behind the list after 0.3.1, most visibly
+  getting stuck short of the top. 0.3.1 only refreshed it on a drag or a wheel scroll directly over
+  the bar's own thin strip. A wheel scroll over the list body itself, the common case, never
+  reached our `<ScrollWheelUp/Down>` mapping at all, because Snacks intercepts the wheel at the
+  `vim.on_key` level, before Nvim's mapping layer runs, and swallows it outright on Nvim 0.11+. A
+  `vim.on_key` watcher now catches the same event Snacks does and nudges a refresh once its own
+  scroll has run.
+
 ## [0.3.1] - 2026-09-17
 
 ### Fixed
