@@ -2,8 +2,10 @@
 
 VS Code-style scrollbars for Neovim, **vertical and horizontal** overlaid on the window edges,
 draggable with the mouse, and auto-hiding when idle. The vertical track doubles as an **overview
-ruler**, marking diagnostics, git changes and search matches across the whole buffer, and an
-optional **minimap** shows the buffer's shape in its syntax colours, with a git change gutter.
+ruler**, marking diagnostics, git changes, search matches and the code block around the cursor
+across the whole buffer, and an optional **minimap** shows the buffer's shape in its syntax colours,
+with a git change gutter. File explorer sidebars (Snacks, neo-tree, nvim-tree) can get a scrollbar
+too.
 
 Neovim has no built-in scrollbar, and while `nvim-scrollview` covers the vertical case, nothing
 provides a horizontal one. With `wrap` off, the only cue that a line runs past the right edge is the
@@ -94,11 +96,11 @@ require("scroll").setup({
   },
 
   visibility = "auto",   -- "auto" | "always" | "hover"
-  hide_delay = 1000,     -- ms of quiet before hiding, when visibility = "auto"
+  hide_delay = 2500,     -- ms of quiet before hiding, when visibility = "auto"
 
   -- Overview ruler: ticks on the vertical track. Git changes take the track's left
   -- column and everything else its right; on a 1-column track they share it and
-  -- the most severe wins (error > warning > search > info > hint > git).
+  -- the most severe wins (error > warning > search > info > hint > git > scope).
   marks = {
     enabled = true,
     diagnostics = {
@@ -116,6 +118,11 @@ require("scroll").setup({
       enabled = true,
       char = "━",        -- shown while 'hlsearch' is highlighting @/
     },
+    scope = {
+      enabled = true,
+      char = "─",        -- first and last line of the block around the cursor
+      node_types = { "function", "method", "if", "else", "for", "while", ... },
+    },
   },
 
   -- Braille minimap, overlaid left of the vertical bar. Off by default.
@@ -129,6 +136,22 @@ require("scroll").setup({
     git_char = "▎",
     winblend = 0,
     autohide = false,       -- hide along with the scrollbars under `visibility`
+    cursor = true,          -- underline the row holding the cursor
+    -- Only over ordinary file buffers ('buftype' empty), and never these:
+    excluded_filetypes = { "snacks_dashboard", "dashboard", "alpha", "ministarter", ... },
+    enabled_for = nil,      -- function(buf, win) -> boolean|nil, to decide yourself
+    dodge = {
+      margin = true,        -- with 'nowrap', scroll sideways before the cursor reaches the map
+      hide = true,          -- hide the map while the cursor or a selection is under it
+    },
+  },
+
+  -- Scrollbar for file explorer sidebars: vertical bar only. Off by default.
+  explorer = {
+    enabled = false,
+    filetypes = { "neo-tree", "NvimTree" }, -- ordinary windows, allowed despite `excluded_*`
+    snacks = true,          -- the Snacks explorer (LazyVim's default)
+    min_width = 10,
   },
 
   winblend = 30,         -- 0 = opaque, 100 = invisible
@@ -154,12 +177,13 @@ so they follow your colorscheme. The thumb glyph is drawn in `ScrollThumb`'s for
 `Normal`'s, when it has none) over the track's background, so the half-block horizontal thumb really
 is half a cell.
 
-Ruler marks: `ScrollMarkError` / `Warn` / `Info` / `Hint` (linked to the `Diagnostic*` groups),
+Ruler marks: `ScrollMarkScope` (linked to `NonText`), `ScrollMarkError` / `Warn` / `Info` / `Hint` (linked to the `Diagnostic*` groups),
 `ScrollMarkAdd` / `Change` / `Delete` (linked to `GitSigns*` when your colorscheme styles them, else
 `Added` / `Changed` / `Removed`), and `ScrollMarkSearch` (the background colour of `Search`, used as
 a foreground).
 
-Minimap: `ScrollMinimap` (linked to `NormalFloat`) and `ScrollMinimapViewport` (linked to `Visual`).
+Minimap: `ScrollMinimap` (linked to `NormalFloat`), `ScrollMinimapViewport` (linked to `Visual`) and
+`ScrollMinimapCursor` (an underline in `CursorLineNr`'s colour).
 With `minimap.colors`, the dots use the buffer's own highlight groups instead of `ScrollMinimap`.
 
 All are defined with `default = true`, so your own `:highlight` wins and survives a `ColorScheme`
@@ -180,12 +204,33 @@ columns; `columns_per_dot = 2` keeps the text's proportions but needs about `wid
 span. With `colors` on, each cell takes the highlight group covering most of its text, from
 treesitter when it is highlighting the buffer and from `:syntax` otherwise. Folds and wrapping are
 ignored. The map scrolls in proportion to the window, the visible region is
-highlighted, and clicking or dragging on it centres the window on that spot. The horizontal
-scrollbar stops where the minimap begins.
+highlighted, the row holding the cursor is underlined, and clicking or dragging on it centres the
+window on that spot. The mouse wheel over it (or over a scrollbar) scrolls the window. The
+horizontal scrollbar stops where the minimap begins.
+
+The minimap is only drawn over ordinary file buffers, never over terminals, dashboards or other
+special buffers. Neovim cannot narrow a window's text area for it, so it keeps out of the way
+instead: with `'nowrap'` the view scrolls sideways as if the window ended where the map starts, so
+the cursor never goes under it (`dodge.margin`). While the cursor or a Visual selection is under the
+map anyway (with `'wrap'`, say), the map hides (`dodge.hide`).
 
 Only the rows on screen are rendered (about `4 * height` lines per refresh, whatever the buffer
 size), and rendered rows are cached until the buffer changes. After an edit, treesitter reparses in
 the background; until it finishes, colours come from the previous parse.
+
+### Scope marks
+
+The vertical track marks the first and last line of the innermost function, `if`, loop or similar
+block around the cursor, in the current window. They come from the trees the treesitter highlighter
+already keeps, so buffers without treesitter highlighting get none. A node counts as a block when a
+`_`-separated word of its type is in `marks.scope.node_types` (`if_statement`,
+`function_definition`, ...); calls and argument lists never do.
+
+### Explorer
+
+With `explorer = true`, neo-tree and nvim-tree windows get a vertical bar (no marks, minimap or
+horizontal bar). The Snacks explorer only ever holds its visible rows in its buffer, so its bar is
+measured from the picker itself, and clicking, dragging or using the wheel on it scrolls the list.
 
 ### Commands
 
@@ -240,7 +285,7 @@ Run the tests with:
 make test
 ```
 
-Six suites, all headless and independent of your config:
+Seven suites, all headless and independent of your config:
 
 - `geometry_spec`: the pure thumb math, including an exhaustive sweep asserting the thumb never
   leaves its track and never inverts.
@@ -248,11 +293,14 @@ Six suites, all headless and independent of your config:
   a performance regression guard.
 - `width_spec`: the document-width cache and its background scan.
 - `integration_spec`: real windows and floats: splits sharing a buffer, winbar offsets, gutters,
-  folds, floats, excluded buffers.
+  folds, floats, excluded buffers, explorer sidebars (including a stand-in Snacks picker).
 - `ruler_spec`: mark placement, priority and lanes, each source (the git fallback runs against a
   throwaway repository), fold changes, and a guard that scrolling does not re-place marks.
-- `minimap_spec`: braille encoding, map layout, the float and its viewport and git gutter, and
-  that drag-scrolling keeps its position under any `'scrolloff'`.
+- `minimap_spec`: braille encoding, map layout, the float and its viewport, cursor row and git
+  gutter, which buffers get a map, dodging the cursor and selection, and that drag-scrolling keeps
+  its position under any `'scrolloff'`.
+- `scope_spec`: finding the block around the cursor with the bundled Lua parser, and its ruler
+  marks.
 
 Inside a Neovim `:terminal`, `$NVIM` is the server address, so the Makefile uses `NVIM_BIN` to pick
 the binary: `make test NVIM_BIN=/path/to/nvim`. `make fmt` formats with

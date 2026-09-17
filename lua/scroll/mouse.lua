@@ -4,10 +4,12 @@
 --- window underneath it, so `locate` accepts both and resolves to the parent
 --- window and a cell offset.
 local config = require("scroll.config")
+local explorer = require("scroll.explorer")
 local geometry = require("scroll.geometry")
 local measure = require("scroll.measure")
 local minimap = require("scroll.minimap")
 local render = require("scroll.render")
+local util = require("scroll.util")
 
 local M = {}
 
@@ -91,7 +93,7 @@ local function hit_test()
   local computed = render.compute(at.win)
 
   local map = computed.minimap
-  if map and at.col >= map.col and at.col < map.col + map.width then
+  if map and render.minimap_shown(at.win) and at.col >= map.col and at.col < map.col + map.width then
     return "minimap", at
   end
 
@@ -110,20 +112,7 @@ local function hit_test()
   return nil, nil
 end
 
---- 'scrolloff'/'sidescrolloff' as they apply to `win`, as the margins Nvim
---- actually keeps before and after the cursor across `span` cells. A value too
---- large to honour (the "keep centred" idiom) centres the cursor, and Nvim
---- centres at row `(span - 1) / 2` but at column `span / 2`, so the caller says
---- which cap applies.
-local function margins(win, name, span, center)
-  local value = vim.wo[win][name]
-  if value < 0 then
-    value = vim.o[name]
-  end
-  local before = math.max(0, math.min(value, center))
-  local after = math.max(0, math.min(value, span - 1 - before))
-  return before, after
-end
+local margins = util.margins
 
 --- Set `topline`, moving the cursor into the new view when it would fall
 --- outside. Nvim keeps the cursor on screen, so a view the cursor is not in is
@@ -220,7 +209,11 @@ local function scroll_to(win, orientation, track_pos, grab)
       page = v.page,
       pos = track_pos - grab,
     })
-    set_topline(win, measure.topline_at(win, target))
+    if computed.kind == "snacks" then
+      explorer.scroll_to(win, target + 1)
+    else
+      set_topline(win, measure.topline_at(win, target))
+    end
   else
     local h = computed.horizontal
     if not h then
@@ -259,6 +252,8 @@ local function track_position(at, orientation, info)
 end
 
 local function on_press()
+  -- A release that never reached us must not leave an old drag steering.
+  drag = nil
   local orientation, at = hit_test()
   if not orientation then
     drag = nil
@@ -336,12 +331,72 @@ local function on_move()
   return false -- always fall through; other plugins listen for <MouseMove>
 end
 
+--- Lines and columns one wheel step scrolls, from 'mousescroll'.
+--- @return integer ver, integer hor
+local function wheel_step()
+  local ver, hor = 3, 6
+  for part in vim.gsplit(vim.o.mousescroll, ",", { plain = true }) do
+    local key, n = part:match("^(%a+):(%d+)$")
+    if key == "ver" then
+      ver = tonumber(n)
+    elseif key == "hor" then
+      hor = tonumber(n)
+    end
+  end
+  return ver, hor
+end
+
+--- A wheel event over a bar scrolls the window the bar belongs to. Left to
+--- Nvim, it would scroll the bar's own float, whose rows would then no longer
+--- line up with the window.
+--- @param dir "up"|"down"|"left"|"right"
+local function on_wheel(dir)
+  local orientation, at = hit_test()
+  if not orientation then
+    return false
+  end
+  local win, info = at.win, at.info
+  local ver, hor = wheel_step()
+  local computed = render.compute(win)
+  if dir == "up" or dir == "down" then
+    local delta = dir == "down" and ver or -ver
+    if computed.kind == "snacks" then
+      explorer.scroll_by(win, delta)
+    else
+      local buf = vim.api.nvim_win_get_buf(win)
+      local last = math.max(1, vim.api.nvim_buf_line_count(buf) - (info.botline - info.topline))
+      set_topline(win, math.max(1, math.min(info.topline + delta, last)))
+    end
+  else
+    local h = computed.horizontal
+    if not h then
+      return true -- nothing to scroll sideways, but the float must not move
+    end
+    local delta = dir == "right" and hor or -hor
+    set_leftcol(win, math.max(0, math.min(info.leftcol + delta, h.total - h.page)))
+  end
+  pcall(vim.api.nvim__redraw, { win = win, valid = true, flush = true })
+  return true
+end
+
 local MODES = { "n", "v", "s", "o", "i" }
 
 local handlers = {
   ["<LeftMouse>"] = on_press,
   ["<LeftDrag>"] = on_drag,
   ["<LeftRelease>"] = on_release,
+  ["<ScrollWheelUp>"] = function()
+    return on_wheel("up")
+  end,
+  ["<ScrollWheelDown>"] = function()
+    return on_wheel("down")
+  end,
+  ["<ScrollWheelLeft>"] = function()
+    return on_wheel("left")
+  end,
+  ["<ScrollWheelRight>"] = function()
+    return on_wheel("right")
+  end,
 }
 
 function M.enable()
@@ -382,5 +437,6 @@ end
 M._set_topline = set_topline
 M._set_leftcol = set_leftcol
 M._minimap_jump = minimap_jump
+M._scroll_to = scroll_to
 
 return M

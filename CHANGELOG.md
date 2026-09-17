@@ -5,6 +5,34 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options; such changes are listed under **Changed**.
 
+## [0.3.0] - 2026-09-17
+
+### Added
+
+- `marks.scope` (on by default): ticks on the vertical track at the first and last line of the
+  function, `if`, loop or similar block around the cursor, found with treesitter.
+- `minimap.cursor` (on by default): the minimap row holding the cursor is underlined
+  (`ScrollMinimapCursor`).
+- `minimap.dodge`: with `'nowrap'` the view scrolls sideways so the cursor never goes under the
+  minimap (`margin`), and the minimap hides while the cursor or a Visual selection is under it
+  (`hide`).
+- `minimap.excluded_filetypes` and `minimap.enabled_for`, to choose which windows get a minimap.
+- `explorer` (off by default): a vertical scrollbar for the Snacks explorer, neo-tree and nvim-tree.
+- The mouse wheel over the minimap or a scrollbar scrolls the window underneath.
+
+### Changed
+
+- `hide_delay` 1000 -> 2500 ms, so the bars are still there when your hand reaches the mouse.
+- The minimap is only drawn over ordinary file buffers ('buftype' empty).
+
+### Fixed
+
+- The minimap stayed on windows that turned into a terminal after they opened, as Snacks terminals
+  do. Windows that stop being eligible now lose their bars on the next refresh.
+- The minimap and the scrollbar went out of sync after a mouse-wheel scroll over them: the wheel
+  scrolled the bar's own float. It now scrolls the window, and a scrolled float is put back.
+- A lost mouse release no longer leaves an old drag steering the next click.
+
 ## [0.2.0] - 2026-09-16
 
 ### Added

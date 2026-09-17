@@ -14,10 +14,12 @@ local SOURCES = {
   { name = "diagnostics", module = require("scroll.marks.diagnostics") },
   { name = "git", module = require("scroll.marks.git") },
   { name = "search", module = require("scroll.marks.search") },
+  { name = "scope", module = require("scroll.marks.scope") },
 }
 
 --- Higher priority wins a shared cell. `left` marks take the track's first
---- column, the rest its last; on a 1-column track that is the same cell.
+--- column, the rest its last; on a 1-column track that is the same cell. The
+--- scope is context rather than news, so it gives way to everything.
 local KINDS = {
   error = { source = "diagnostics", hl = highlight.MARK_ERROR, priority = 90 },
   warn = { source = "diagnostics", hl = highlight.MARK_WARN, priority = 80 },
@@ -27,6 +29,7 @@ local KINDS = {
   delete = { source = "git", hl = highlight.MARK_DELETE, priority = 40, left = true },
   change = { source = "git", hl = highlight.MARK_CHANGE, priority = 30, left = true },
   add = { source = "git", hl = highlight.MARK_ADD, priority = 20, left = true },
+  scope = { source = "scope", hl = highlight.MARK_SCOPE, priority = 10 },
 }
 
 --- @type table<integer, { sig: string, cells: table[] }>
@@ -121,7 +124,7 @@ function M.cells(win, track, total, on_update)
   local ranges, parts = {}, {}
   for _, source in ipairs(SOURCES) do
     if marks[source.name].enabled then
-      local got, version = source.module.get(buf, on_update)
+      local got, version = source.module.get(buf, on_update, win)
       parts[#parts + 1] = source.name .. "=" .. tostring(version)
       vim.list_extend(ranges, got)
     end
@@ -134,6 +137,7 @@ function M.cells(win, track, total, on_update)
     marks.diagnostics.char,
     marks.git.char,
     marks.search.char,
+    marks.scope.char,
   }, "|")
 
   local entry = cache[win]

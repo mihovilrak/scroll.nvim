@@ -342,6 +342,161 @@ t.describe("dragging stays put with wrapped lines", function()
   t.eq(vim.fn.getwininfo(win)[1].topline, 300, "wrapped: scrolled up stays put")
 end)
 
+--- The minimap float of `win`, if it is on screen.
+local function shown_map(win)
+  local f = float_of(win, "minimap")
+  return f and not vim.api.nvim_win_get_config(f).hide and f or nil
+end
+
+t.describe("the minimap only covers ordinary file buffers", function()
+  vim.cmd("silent! only")
+  local buf, win = fill(500)
+  scroll.refresh()
+  t.check(shown_map(win) ~= nil, "a file buffer gets a minimap")
+
+  vim.bo[buf].filetype = "snacks_dashboard"
+  scroll.refresh()
+  t.eq(float_of(win, "minimap"), nil, "an excluded filetype does not")
+  t.check(float_of(win, "vertical") ~= nil, "but keeps its vertical bar")
+  vim.bo[buf].filetype = ""
+
+  config.options.minimap.enabled_for = function(b)
+    return b ~= buf
+  end
+  scroll.refresh()
+  t.eq(float_of(win, "minimap"), nil, "`enabled_for` can turn it off")
+  config.options.minimap.enabled_for = nil
+end)
+
+t.describe("a window that becomes a terminal loses the minimap", function()
+  vim.cmd("silent! only")
+  local buf = vim.api.nvim_create_buf(true, false)
+  local win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(win, buf)
+  scroll.refresh()
+  t.check(float_of(win, "minimap") ~= nil, "an empty file buffer gets a minimap")
+
+  -- As Snacks does it: the window exists first, the terminal comes after.
+  local job = vim.fn.jobstart({ vim.v.progpath, "--clean", "--headless", "+sleep 2", "+qa!" }, { term = true })
+  t.eq(vim.bo[buf].buftype, "terminal", "the buffer is a terminal now")
+  vim.wait(200, function()
+    return float_of(win, "minimap") == nil
+  end)
+  t.eq(float_of(win, "minimap"), nil, "TermOpen removed the minimap")
+  vim.fn.jobstop(job)
+end)
+
+t.describe("the row holding the cursor is underlined", function()
+  vim.cmd("silent! only")
+  local _, win = fill(2000, "text ")
+  vim.cmd("normal! gg")
+  vim.api.nvim_win_set_cursor(win, { 10, 0 })
+  scroll.refresh()
+  local function cursor_rows()
+    local fbuf = vim.api.nvim_win_get_buf(float_of(win, "minimap"))
+    local rows = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_extmarks(fbuf, -1, 0, -1, { details = true })) do
+      if m[4].line_hl_group == "ScrollMinimapCursor" then
+        rows[#rows + 1] = m[2]
+      end
+    end
+    return rows
+  end
+  t.eq(vim.inspect(cursor_rows()), vim.inspect({ 2 }), "line 10 is in row 2")
+  vim.api.nvim_win_set_cursor(win, { 13, 0 })
+  scroll.refresh()
+  t.eq(vim.inspect(cursor_rows()), vim.inspect({ 3 }), "line 13 is in row 3")
+
+  config.options.minimap.cursor = false
+  scroll.refresh()
+  t.eq(#cursor_rows(), 0, "no line with `cursor = false`")
+  config.options.minimap.cursor = true
+end)
+
+t.describe("the minimap steps aside for the cursor and the selection", function()
+  vim.cmd("silent! only")
+  local _, win = fill(100, string.rep("x", 200))
+  local map_col = vim.fn.getwininfo(win)[1].width - 1 - 20
+
+  vim.wo[win].wrap = true
+  scroll.refresh()
+  t.check(shown_map(win) ~= nil, "shown while the cursor is clear")
+  vim.api.nvim_win_set_cursor(win, { 1, map_col + 3 })
+  scroll.refresh()
+  t.eq(shown_map(win), nil, "hidden while the cursor is under it")
+  t.check(float_of(win, "minimap") ~= nil, "hidden, not destroyed")
+  vim.api.nvim_win_set_cursor(win, { 1, 0 })
+  scroll.refresh()
+  t.check(shown_map(win) ~= nil, "back once the cursor leaves")
+
+  vim.wo[win].wrap = false
+  config.options.minimap.dodge.margin = false
+  vim.api.nvim_win_set_cursor(win, { 2, 0 })
+  vim.api.nvim_feedkeys("V", "x", false)
+  scroll.refresh()
+  t.eq(shown_map(win), nil, "hidden under a linewise selection of long lines")
+  vim.api.nvim_feedkeys("\27", "x", false)
+  scroll.refresh()
+  t.check(shown_map(win) ~= nil, "back after the selection ends")
+
+  vim.api.nvim_buf_set_lines(0, 1, 2, false, { "short" })
+  vim.api.nvim_win_set_cursor(win, { 2, 0 })
+  vim.api.nvim_feedkeys("V", "x", false)
+  scroll.refresh()
+  t.check(shown_map(win) ~= nil, "a selection of short lines leaves it alone")
+  vim.api.nvim_feedkeys("\27", "x", false)
+
+  config.options.minimap.dodge.hide = false
+  vim.wo[win].wrap = true
+  vim.api.nvim_win_set_cursor(win, { 1, map_col + 3 })
+  scroll.refresh()
+  t.check(shown_map(win) ~= nil, "`dodge.hide = false` keeps it up")
+  config.options.minimap.dodge = { margin = true, hide = true }
+  vim.wo[win].wrap = false
+end)
+
+t.describe("the right margin keeps the cursor left of the minimap", function()
+  vim.cmd("silent! only")
+  local _, win = fill(100, string.rep("y", 300))
+  local dodge = require("scroll.dodge")
+  local info = vim.fn.getwininfo(win)[1]
+  local map_col = info.width - 1 - 20
+  vim.wo[win].sidescrolloff = 2
+
+  for _, col in ipairs({ 10, map_col - 3, map_col, map_col + 10, 150, 299 }) do
+    vim.api.nvim_win_set_cursor(win, { 1, col })
+    dodge.keep_clear(win)
+    local screen = col - vim.fn.winsaveview().leftcol
+    t.check(screen <= map_col - 1 - 2, ("column %d is drawn at %d, left of the map at %d"):format(col, screen, map_col))
+    t.check(screen >= 0, ("column %d is on screen"):format(col))
+  end
+
+  vim.fn.winrestview({ leftcol = 0 })
+  vim.api.nvim_win_set_cursor(win, { 1, 10 })
+  dodge.keep_clear(win)
+  t.eq(vim.fn.winsaveview().leftcol, 0, "no scroll while the cursor is clear")
+
+  config.options.minimap.dodge.margin = false
+  vim.api.nvim_win_set_cursor(win, { 1, map_col + 5 })
+  dodge.keep_clear(win)
+  t.eq(vim.fn.winsaveview().leftcol, 0, "`dodge.margin = false` leaves the view alone")
+  config.options.minimap.dodge.margin = true
+  vim.wo[win].sidescrolloff = -1
+end)
+
+t.describe("a scrolled minimap float is put back", function()
+  vim.cmd("silent! only")
+  local _, win = fill(2000)
+  scroll.refresh()
+  local float = float_of(win, "minimap")
+  vim.api.nvim_win_call(float, function()
+    vim.fn.winrestview({ topline = 6 })
+  end)
+  t.eq(vim.fn.getwininfo(float)[1].topline, 6, "the float was scrolled")
+  scroll.refresh()
+  t.eq(vim.fn.getwininfo(float)[1].topline, 1, "the next refresh scrolls it back")
+end)
+
 t.describe("scrolling with the minimap stays cheap on a huge buffer", function()
   vim.cmd("silent! only")
   local _, win = fill(100000, "\tlocal value = compute(x) -- trailing text ")

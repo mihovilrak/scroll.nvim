@@ -1,5 +1,6 @@
 --- A plain minimap: the buffer drawn in braille, one cell per block of text,
---- with a git change gutter and the viewport highlighted.
+--- with a git change gutter, the viewport highlighted and the cursor's row
+--- underlined. Only ordinary file buffers get one.
 ---
 --- Each braille cell has 2x4 dots. A dot row is one buffer line and a dot
 --- column is `columns_per_dot` display columns, lit when that block holds any
@@ -14,6 +15,7 @@
 local config = require("scroll.config")
 local git = require("scroll.marks.git")
 local highlight = require("scroll.highlight")
+local util = require("scroll.util")
 
 local M = {}
 
@@ -326,6 +328,9 @@ function M.compute(win, info)
   if not mm.enabled or info.width < mm.min_window_width or info.height < 1 then
     return nil
   end
+  if not util.minimap_eligible(win) then
+    return nil
+  end
   local right = opts.vertical.enabled and opts.vertical.width or 0
   local buf = vim.api.nvim_win_get_buf(win)
   local l = M.layout({
@@ -477,6 +482,12 @@ local function paint(float_buf, ns, opts)
       priority = 100,
     })
   end
+  if opts.cursor_row and opts.cursor_row >= 0 and opts.cursor_row < #lines then
+    vim.api.nvim_buf_set_extmark(float_buf, ns, opts.cursor_row, 0, {
+      line_hl_group = highlight.MINIMAP_CURSOR,
+      priority = 150,
+    })
+  end
   for row, kind in pairs(opts.gutter) do
     vim.api.nvim_buf_set_extmark(float_buf, ns, row, 0, {
       virt_text = { { config.options.minimap.git_char, GIT_HL[kind] } },
@@ -497,6 +508,11 @@ function M.bar_opts(win, info, map, on_update)
   local mm = config.options.minimap
   local buf = vim.api.nvim_win_get_buf(win)
   local gutter, git_sig = git_gutter(buf, map.offset, info.height, on_update)
+  local cursor_row = nil
+  if mm.cursor then
+    local lnum = vim.api.nvim_win_get_cursor(win)[1]
+    cursor_row = math.floor((lnum - 1) / M.LINES_PER_ROW) - map.offset
+  end
   return {
     row = info.winbar,
     col = map.col,
@@ -507,6 +523,7 @@ function M.bar_opts(win, info, map, on_update)
     source = buf,
     map = map,
     gutter = gutter,
+    cursor_row = cursor_row,
     on_update = on_update,
     paint = paint,
     content_sig = table.concat({
@@ -520,6 +537,7 @@ function M.bar_opts(win, info, map, on_update)
       vim.bo[buf].tabstop,
       color_source(buf) or "",
       parsed[buf] or 0,
+      tostring(cursor_row),
     }, ":"),
   }
 end

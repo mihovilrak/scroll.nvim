@@ -106,6 +106,15 @@ local function paint(buf, ns, opts)
   end
 end
 
+--- Whether the float's own view has been scrolled. It shows exactly its
+--- buffer, so any scroll (a wheel event that reached it, say) shifts every
+--- row and column away from where the geometry put them.
+--- @return boolean
+function Bar:drifted()
+  local view = vim.api.nvim_win_call(self.win, vim.fn.winsaveview)
+  return view.topline ~= 1 or view.leftcol ~= 0 or (view.skipcol or 0) ~= 0
+end
+
 --- Create or reposition the float and redraw the thumb.
 ---
 --- @param parent integer window the bar is attached to
@@ -129,7 +138,8 @@ function Bar:update(parent, opts)
     tostring(opts.pos), tostring(opts.size), tostring(opts.hovered),
     tostring(opts.char), tostring(opts.track_char), tostring(opts.corner), opts.content_sig or "",
   }, ":")
-  if self.drawn == sig and self:is_valid() and not self.hidden then
+  local drifted = self:is_valid() and self:drifted()
+  if self.drawn == sig and self:is_valid() and not self.hidden and not drifted then
     return
   end
 
@@ -164,6 +174,11 @@ function Bar:update(parent, opts)
   vim.wo[self.win].winblend = opts.winblend
   local draw = opts.paint or paint
   draw(self.buf, ns, opts)
+  if drifted then
+    vim.api.nvim_win_call(self.win, function()
+      vim.fn.winrestview({ topline = 1, leftcol = 0, skipcol = 0 })
+    end)
+  end
 
   self.drawn = sig
   self.hidden = false

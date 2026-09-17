@@ -1,6 +1,8 @@
 --- Per-window refresh: read the window's state, run the geometry, draw the bars.
 local Bar = require("scroll.bar")
 local config = require("scroll.config")
+local dodge = require("scroll.dodge")
+local explorer = require("scroll.explorer")
 local geometry = require("scroll.geometry")
 local highlight = require("scroll.highlight")
 local measure = require("scroll.measure")
@@ -30,19 +32,27 @@ end
 --- Geometry for both bars, or nil where that bar should not be shown.
 --- Kept separate from drawing so tests can assert placement without floats.
 --- @param win integer
---- @return table  `{ info, vertical = {pos,size}?, horizontal = {pos,size,textoff,track}?, minimap? }`
+--- @return table  `{ info, kind, vertical = {pos,size}?, horizontal = {pos,size,textoff,track}?, minimap? }`
 function M.compute(win)
   local opts = config.options
   local info = vim.fn.getwininfo(win)[1]
-  local result = { info = info }
+  local kind = util.kind(win)
+  local result = { info = info, kind = kind }
   if not info then
     return result
   end
 
-  result.minimap = minimap.compute(win, info)
+  -- Explorers get the vertical bar only.
+  local code = kind == "code"
+  result.minimap = code and minimap.compute(win, info) or nil
 
   if opts.vertical.enabled then
-    local m = measure.vertical(win)
+    local m
+    if kind == "snacks" then
+      m = explorer.measure(win, info.height)
+    else
+      m = measure.vertical(win)
+    end
     if m then
       local g = geometry.thumb({
         track = info.height,
@@ -59,7 +69,7 @@ function M.compute(win)
     end
   end
 
-  if opts.horizontal.enabled then
+  if opts.horizontal.enabled and code then
     local buf = vim.api.nvim_win_get_buf(win)
     local doc_w = width.get(buf, win, function()
       -- A background scan just finished and the document may now be wider
@@ -146,7 +156,15 @@ local function draw_vertical(win, entry, computed, hovered)
     return
   end
 
-  local marks, content_sig = ruler.cells(win, info.height, v.total, marks_updated)
+  local marks, content_sig = {}, ""
+  if computed.kind == "code" then
+    marks, content_sig = ruler.cells(win, info.height, v.total, marks_updated)
+  end
+  local zindex = opts.zindex
+  if computed.kind == "snacks" then
+    -- The list is itself a float; the bar has to sit above it.
+    zindex = (vim.api.nvim_win_get_config(win).zindex or 50) + 1
+  end
   entry.vertical = entry.vertical or Bar.new()
   entry.vertical:update(win, {
     orientation = "vertical",
@@ -160,7 +178,7 @@ local function draw_vertical(win, entry, computed, hovered)
     char = opts.vertical.char,
     track_char = opts.vertical.track_char,
     winblend = opts.winblend,
-    zindex = opts.zindex,
+    zindex = zindex,
     hovered = hovered,
     marks = marks,
     corner = corner(computed),
@@ -213,7 +231,20 @@ local function draw_minimap(win, entry, computed)
     return
   end
   entry.minimap = entry.minimap or Bar.new(highlight.MINIMAP)
+  -- Hidden rather than destroyed, so it comes back without a rebuild.
+  if dodge.covered(win, computed.info, map) then
+    entry.minimap:hide()
+    return
+  end
   entry.minimap:update(win, minimap.bar_opts(win, computed.info, map, marks_updated))
+end
+
+--- Whether the minimap of `win` is on screen, so clicks there are its own.
+--- @param win integer
+--- @return boolean
+function M.minimap_shown(win)
+  local bar = bars[win] and bars[win].minimap
+  return bar ~= nil and bar:is_valid() and not bar.hidden
 end
 
 --- Whether the bar with this key is subject to hiding. The minimap stays up unless
@@ -260,6 +291,9 @@ end
 --- Refresh every ordinary window in the current tabpage.
 --- @param quiet boolean|nil  only redraw bars that are already showing
 function M.refresh_all(quiet)
+  -- Windows that stopped carrying bars are not among the targets below, so
+  -- they would otherwise keep them.
+  M.prune()
   for _, win in ipairs(util.target_windows()) do
     M.refresh(win, quiet)
   end
@@ -319,10 +353,11 @@ function M.owner_of(float_win)
   return nil, nil
 end
 
---- Drop bookkeeping for windows that no longer exist.
+--- Drop bars of windows that no longer exist or no longer carry bars (a
+--- buffer turned into a terminal without any event we saw, say).
 function M.prune()
-  for win in pairs(vim.deepcopy(bars)) do
-    if not vim.api.nvim_win_is_valid(win) then
+  for _, win in ipairs(vim.tbl_keys(bars)) do
+    if not util.is_eligible(win) then
       M.clear(win)
     end
   end

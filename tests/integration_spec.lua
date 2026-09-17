@@ -296,6 +296,107 @@ t.describe("the thumb cell takes the track's background", function()
   vim.api.nvim_set_hl(0, "ScrollThumb", {})
 end)
 
+t.describe("a scrolled bar float is put back", function()
+  vim.cmd("silent! only")
+  fill(500)
+  local win = vim.api.nvim_get_current_win()
+  scroll.refresh()
+  local float
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local parent, orientation = render.owner_of(w)
+    if parent == win and orientation == "vertical" then
+      float = w
+    end
+  end
+  vim.api.nvim_win_call(float, function()
+    vim.fn.winrestview({ topline = 4 })
+  end)
+  scroll.refresh()
+  t.eq(vim.fn.getwininfo(float)[1].topline, 1, "the thumb float scrolls back to its first row")
+end)
+
+t.describe("explorer sidebars get a vertical bar only when enabled", function()
+  vim.cmd("silent! only")
+  local buf = fill(500, string.rep("n", 300))
+  local win = vim.api.nvim_get_current_win()
+  vim.wo[win].wrap = false
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].filetype = "neo-tree"
+  scroll.refresh()
+  t.eq(next(tracks(win)), nil, "neo-tree is excluded by default")
+
+  scroll.setup({ visibility = "always", mouse = false, minimap = true, explorer = true })
+  scroll.refresh()
+  local bars = tracks(win)
+  t.check(bars.vertical ~= nil, "with `explorer = true` it gets a vertical bar")
+  t.eq(bars.horizontal, nil, "but no horizontal bar")
+  t.eq(bars.minimap, nil, "and no minimap")
+
+  scroll.setup({ visibility = "always", mouse = false })
+end)
+
+t.describe("the Snacks explorer list gets a bar measured from the picker", function()
+  vim.cmd("silent! only")
+  local list_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, vim.split(string.rep("item\n", 29), "\n"))
+  local list_win = vim.api.nvim_open_win(list_buf, false, {
+    relative = "editor",
+    row = 1,
+    col = 0,
+    width = 30,
+    height = 30,
+    zindex = 60,
+  })
+  local list = {
+    win = { win = list_win },
+    top = 1,
+    count = function()
+      return 300
+    end,
+    scroll = function(self, to, absolute)
+      self.top = absolute and to or self.top + to
+    end,
+  }
+  package.loaded["snacks.picker.core.picker"] = {
+    get = function(opts)
+      return opts.source == "explorer" and { { list = list } } or {}
+    end,
+  }
+  local explorer = require("scroll.explorer")
+  local util = require("scroll.util")
+
+  t.eq(util.kind(list_win), nil, "ignored while `explorer` is off")
+  scroll.setup({ visibility = "always", mouse = false, explorer = true })
+  t.eq(util.kind(list_win), "snacks", "recognised once it is on")
+
+  scroll.refresh()
+  local bar = tracks(list_win).vertical
+  t.check(bar ~= nil, "the list gets a vertical bar")
+  t.eq(bar and bar.zindex, 61, "drawn above the list float")
+  t.eq(render.compute(list_win).vertical.pos, 0, "at the top of the list")
+
+  list.top = 271
+  scroll.refresh()
+  local v = render.compute(list_win).vertical
+  t.eq(v.pos + v.size, 30, "at the end of the list the thumb is at the bottom")
+
+  require("scroll.mouse")._scroll_to(list_win, "vertical", 0, 0)
+  t.eq(list.top, 1, "dragging to the top scrolls the list, not the window")
+  explorer.scroll_by(list_win, 5)
+  t.eq(list.top, 6, "a wheel step scrolls the list")
+
+  t.check(explorer.state_changed(), "the first check sees the list")
+  t.check(not explorer.state_changed(), "nothing changed since")
+  list.top = 9
+  t.check(explorer.state_changed(), "scrolling the list is noticed")
+
+  package.loaded["snacks.picker.core.picker"] = nil
+  scroll.refresh()
+  t.eq(next(tracks(list_win)), nil, "the bar goes when the picker does")
+  vim.api.nvim_win_close(list_win, true)
+  scroll.setup({ visibility = "always", mouse = false })
+end)
+
 t.describe("setup accepts booleans and can be called again", function()
   scroll.setup({ visibility = "always", mouse = false, minimap = true, marks = { git = false } })
   local opts = require("scroll.config").options

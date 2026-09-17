@@ -1,4 +1,6 @@
 --- Autocmd wiring and the refresh coalescer.
+local dodge = require("scroll.dodge")
+local explorer = require("scroll.explorer")
 local highlight = require("scroll.highlight")
 local measure = require("scroll.measure")
 local minimap = require("scroll.minimap")
@@ -98,12 +100,29 @@ function M.enable()
   -- Viewport moved or changed shape.
   au({ "WinScrolled", "WinResized", "VimResized", "WinEnter", "BufWinEnter", "TabEnter", "TabNewEntered" })
 
+  -- What a window shows changed kind. A terminal is often opened in a window
+  -- that already holds an ordinary buffer, so `BufWinEnter` comes too early
+  -- to tell; `TermOpen` is when it becomes a terminal.
+  au({ "BufEnter", "FileType", "TermOpen", "TermEnter" })
+  au("OptionSet", { pattern = "buftype,filetype" })
+
+  -- Entering or leaving Visual mode can move the minimap out of the way.
+  au("ModeChanged")
+
   -- Content changed. Width invalidation rides on changedtick inside width.lua.
   au({ "TextChanged", "TextChangedI", "TextChangedP" })
 
   -- Folds can open or close without any dedicated event, and the cursor
-  -- moving is the usual way that happens.
-  au({ "CursorMoved", "CursorMovedI" })
+  -- moving is the usual way that happens. The minimap margin is kept here,
+  -- synchronously, so the view is corrected before it is drawn.
+  au({ "CursorMoved", "CursorMovedI" }, {
+    handler = function()
+      local ok, err = pcall(dodge.keep_clear, vim.api.nvim_get_current_win())
+      if not ok then
+        vim.notify_once("scroll.nvim: " .. tostring(err), vim.log.levels.ERROR)
+      end
+    end,
+  })
 
   -- Anything that changes the gutter width, the wrap mode, or the rendered
   -- height invalidates the cached measurements.
@@ -210,6 +229,11 @@ function M.enable()
       if search.state_changed() then
         M.schedule({ quiet = true })
       end
+      -- The Snacks explorer scrolls by rewriting its list, which fires
+      -- nothing we can hook.
+      if explorer.state_changed() then
+        M.schedule()
+      end
     end,
     refresh = false,
   })
@@ -236,6 +260,7 @@ function M.disable()
   width.reset()
   ruler.reset()
   minimap.reset()
+  explorer.reset()
 end
 
 return M

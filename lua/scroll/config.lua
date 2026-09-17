@@ -44,6 +44,39 @@ M.defaults = {
       enabled = true,
       char = "━",
     },
+    --- Start and end of the code block around the cursor (function, `if`,
+    --- loop, ...), found with treesitter. Drawn under every other mark.
+    scope = {
+      enabled = true,
+      char = "─",
+      --- A treesitter node is a scope when one of the `_`-separated words of
+      --- its type is listed here (`if_statement`, `function_definition`, ...).
+      --- The innermost multi-line one around the cursor is marked.
+      node_types = {
+        "function",
+        "method",
+        "lambda",
+        "closure",
+        "if",
+        "elif",
+        "else",
+        "for",
+        "while",
+        "loop",
+        "repeat",
+        "do",
+        "class",
+        "struct",
+        "impl",
+        "interface",
+        "switch",
+        "case",
+        "match",
+        "try",
+        "catch",
+        "with",
+      },
+    },
   },
 
   --- Plain minimap: the buffer in braille, with a git change gutter and the
@@ -59,6 +92,33 @@ M.defaults = {
     --- `:syntax`). Off draws the whole map in `ScrollMinimap`.
     colors = true,
     min_window_width = 80, -- not drawn in narrower windows
+    --- The minimap is only drawn over ordinary file buffers ('buftype' empty),
+    --- and never over these filetypes.
+    excluded_filetypes = {
+      "snacks_dashboard",
+      "dashboard",
+      "alpha",
+      "ministarter",
+      "starter",
+      "lazy",
+      "mason",
+      "oil",
+      "snacks_picker_list",
+      "gitcommit",
+    },
+    --- `function(buf, win) -> boolean|nil`: decide per window. `nil` falls
+    --- back to the rules above.
+    enabled_for = nil,
+    --- Underline the map row holding the cursor (`ScrollMinimapCursor`).
+    cursor = true,
+    --- Keep the minimap from hiding text.
+    dodge = {
+      --- Scroll sideways so the cursor never goes under the map, as if the
+      --- window ended where the map starts. Only with 'nowrap'.
+      margin = true,
+      --- Hide the map while the cursor or a Visual selection is under it.
+      hide = true,
+    },
     git = true,
     git_char = "▎",
     winblend = 0,
@@ -71,7 +131,7 @@ M.defaults = {
   --- "always" draw whenever the content overflows
   --- "hover" only while the pointer is near the bar (needs 'mousemoveevent')
   visibility = "auto",
-  hide_delay = 1000,
+  hide_delay = 2500,
 
   winblend = 30, -- 0 = opaque, 100 = invisible
 
@@ -82,6 +142,16 @@ M.defaults = {
   zindex = 40,
 
   mouse = true,
+
+  --- Scrollbar for file explorer sidebars (vertical bar only). neo-tree and
+  --- nvim-tree are ordinary windows and only need their filetype listed; the
+  --- Snacks explorer draws only its visible rows, so it has its own adapter.
+  explorer = {
+    enabled = false,
+    filetypes = { "neo-tree", "NvimTree" },
+    snacks = true,
+    min_width = 10,
+  },
 
   excluded_filetypes = { "help", "qf", "NvimTree", "neo-tree", "TelescopePrompt", "lazy", "mason" },
   excluded_buftypes = { "terminal", "prompt", "nofile", "quickfix" },
@@ -100,8 +170,8 @@ M.options = vim.deepcopy(M.defaults)
 
 --- Sections that may be given as a bare boolean: `minimap = true` is
 --- `minimap = { enabled = true }`.
-local sections = { "vertical", "horizontal", "marks", "minimap" }
-local mark_sources = { "diagnostics", "git", "search" }
+local sections = { "vertical", "horizontal", "marks", "minimap", "explorer" }
+local mark_sources = { "diagnostics", "git", "search", "scope" }
 
 --- Validate the parts of a user config where a wrong value would otherwise
 --- fail later in a confusing place (inside a redraw, or as a bad window config).
@@ -124,6 +194,9 @@ local function validate(opts)
   vim.validate("minimap.columns_per_dot", opts.minimap.columns_per_dot, function(v)
     return type(v) == "number" and v >= 1
   end, "a number >= 1")
+  vim.validate("minimap.enabled_for", opts.minimap.enabled_for, "function", true)
+  vim.validate("minimap.dodge", opts.minimap.dodge, "table")
+  vim.validate("explorer", opts.explorer, "table")
   vim.validate("marks", opts.marks, "table")
   for _, source in ipairs(mark_sources) do
     vim.validate("marks." .. source, opts.marks[source], "table")

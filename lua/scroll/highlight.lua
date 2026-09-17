@@ -19,6 +19,7 @@ M.THUMB_UNDER_HOVER = "ScrollThumbUnderHover"
 
 M.MINIMAP = "ScrollMinimap"
 M.MINIMAP_VIEWPORT = "ScrollMinimapViewport"
+M.MINIMAP_CURSOR = "ScrollMinimapCursor"
 
 M.MARK_ERROR = "ScrollMarkError"
 M.MARK_WARN = "ScrollMarkWarn"
@@ -28,6 +29,7 @@ M.MARK_SEARCH = "ScrollMarkSearch"
 M.MARK_ADD = "ScrollMarkAdd"
 M.MARK_CHANGE = "ScrollMarkChange"
 M.MARK_DELETE = "ScrollMarkDelete"
+M.MARK_SCOPE = "ScrollMarkScope"
 
 local links = {
   [M.TRACK] = "PmenuSbar",
@@ -39,6 +41,7 @@ local links = {
   [M.MARK_WARN] = "DiagnosticWarn",
   [M.MARK_INFO] = "DiagnosticInfo",
   [M.MARK_HINT] = "DiagnosticHint",
+  [M.MARK_SCOPE] = "NonText",
 }
 
 --- Git marks follow gitsigns' colours when a colorscheme styles them, and
@@ -89,6 +92,15 @@ function M.setup()
   for under, source in pairs({ [M.THUMB_UNDER] = M.THUMB_CELL, [M.THUMB_UNDER_HOVER] = M.THUMB_CELL_HOVER }) do
     vim.api.nvim_set_hl(0, under, { bg = get(source).fg })
   end
+
+  -- A thin rule under the minimap row holding the cursor, in the colour of
+  -- the cursor's line number.
+  local cursor_nr = get("CursorLineNr")
+  vim.api.nvim_set_hl(0, M.MINIMAP_CURSOR, {
+    underline = true,
+    sp = cursor_nr.fg or normal.fg,
+    default = true,
+  })
 
   for group, candidates in pairs(git_links) do
     local target = candidates[2]

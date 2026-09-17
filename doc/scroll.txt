@@ -83,7 +83,7 @@ Where the two tracks meet, the vertical track ends in a box-drawing joint
                                                          *scroll-option-marks*
 marks ~
     Overview ruler on the vertical bar. When marks share a cell, the most
-    severe wins: error > warning > search > info > hint > git.
+    severe wins: error > warning > search > info > hint > git > scope.
 
     `enabled`                   Boolean, default `true`.
     `diagnostics.enabled`       Boolean, default `true`.
@@ -101,6 +101,21 @@ marks ~
                                 the last search pattern while 'hlsearch' is
                                 highlighting it.
     `search.char`               Default `"━"`.
+    `scope.enabled`             Boolean, default `true`. Marks the first and
+                                last line of the innermost block (function,
+                                `if`, loop, ...) around the cursor, in the
+                                current window. Needs treesitter
+                                highlighting in the buffer.
+    `scope.char`                Default `"─"`.
+    `scope.node_types`          Words that make a treesitter node type a
+                                block when one of its `_`-separated parts
+                                matches: `if` matches `if_statement`. Calls
+                                and argument lists never match. Default
+                                `function`, `method`, `lambda`, `closure`,
+                                `if`, `elif`, `else`, `for`, `while`,
+                                `loop`, `repeat`, `do`, `class`, `struct`,
+                                `impl`, `interface`, `switch`, `case`,
+                                `match`, `try`, `catch`, `with`.
 
     Git hunks come from gitsigns.nvim when it is attached to the buffer.
     Otherwise the buffer is diffed against its git index version, which is
@@ -123,8 +138,23 @@ minimap ~
     `winblend`          Default `0`.
     `autohide`          Boolean, default `false`. Hide along with the bars
                         under |scroll-option-visibility|.
+    `cursor`            Boolean, default `true`. Underline the row holding
+                        the cursor.
+    `excluded_filetypes` Filetypes that never get a minimap. Default
+                        `{ "snacks_dashboard", "dashboard", "alpha",
+                        "ministarter", "starter", "lazy", "mason", "oil",
+                        "snacks_picker_list", "gitcommit" }`.
+    `enabled_for`       `function(buf, win)` returning `true`, `false`, or
+                        `nil` to fall back to the rules. Default `nil`.
+    `dodge.margin`      Boolean, default `true`. With 'nowrap', scroll
+                        sideways as if the window ended where the map
+                        starts, so the cursor never goes under it.
+    `dodge.hide`        Boolean, default `true`. Hide the map while the
+                        cursor or a Visual selection is under it.
 
-    Click or drag on the minimap to centre the window there.
+    The minimap is only drawn over ordinary file buffers ('buftype' empty).
+    Click or drag on the minimap to centre the window there; the mouse wheel
+    over it scrolls the window.
 
                                                     *scroll-option-visibility*
 visibility ~
@@ -134,7 +164,7 @@ visibility ~
                         'mousemoveevent'.
 
 hide_delay ~
-    Milliseconds, default `1000`.
+    Milliseconds, default `2500`.
 
 winblend ~
     Transparency of the bars, 0-100, default `30`.
@@ -144,6 +174,19 @@ zindex ~
 
 mouse ~
     Boolean, default `true`. Click-to-jump and dragging.
+
+                                                      *scroll-option-explorer*
+explorer ~
+    Scrollbar for file explorer sidebars: a vertical bar only, without
+    marks.
+    `enabled`     Boolean, default `false`.
+    `filetypes`   Default `{ "neo-tree", "NvimTree" }`. Windows with these
+                  filetypes get a bar even though `excluded_filetypes` and
+                  `excluded_buftypes` would leave them out.
+    `snacks`      Boolean, default `true`. The Snacks explorer. Its list
+                  only holds the visible rows, so the bar is measured from
+                  the picker, and clicks, drags and the wheel scroll it.
+    `min_width`   Default `10`.
 
 excluded_filetypes ~
     Default `{ "help", "qf", "NvimTree", "neo-tree", "TelescopePrompt",
@@ -211,12 +254,15 @@ ScrollMarkWarn          `Diagnostic*` groups.
 ScrollMarkInfo
 ScrollMarkHint
 ScrollMarkSearch        Search marks. Foreground taken from |hl-Search|.
+ScrollMarkScope         Scope marks. Links to |hl-NonText|.
 ScrollMarkAdd           Git marks. Link to `GitSigns*` when the
 ScrollMarkChange        colorscheme defines them, otherwise to
 ScrollMarkDelete        `Added`, `Changed` and `Removed`.
 ScrollMinimap           Minimap, and its dots when `colors` is off. Links
                         to |hl-NormalFloat|.
 ScrollMinimapViewport   Visible region in the minimap. Links to |hl-Visual|.
+ScrollMinimapCursor     Minimap row holding the cursor. An underline in the
+                        colour of |hl-CursorLineNr|.
 
 ==============================================================================
 7. LIMITATIONS                                             *scroll-limitations*
@@ -224,6 +270,8 @@ ScrollMinimapViewport   Visible region in the minimap. Links to |hl-Visual|.
 - Horizontal width ignores concealed text and inline virtual text.
 - The minimap ignores folds and wrapping, and counts double-width
   characters as one column.
+- The minimap is drawn over the text. It keeps the cursor clear of itself
+  (see `minimap.dodge`), but the mouse cannot click text under it.
 - Fold changes made away from the visible lines (for example `:100,400fold`
   while viewing the top of the buffer) are noticed at the next edit or
   option change.
