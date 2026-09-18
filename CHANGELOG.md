@@ -5,6 +5,37 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options; such changes are listed under **Changed**.
 
+## [0.4.0] - 2026-09-18
+
+### Added
+
+- `explorer.horizontal` (on by default): neo-tree and nvim-tree sidebars get a horizontal bar as
+  well as a vertical one, when a name runs past the sidebar's edge. The Snacks explorer is left
+  out: its list resets its own `leftcol` every time it redraws, so a sideways position there would
+  not survive the next scroll.
+
+### Fixed
+
+- The Snacks explorer's list scrolled the wrong way under the mouse wheel and could never reach the
+  top -- the bug 0.3.1 and 0.3.2 were aimed at, which neither actually fixed. The cause was not the
+  bar at all: merely *having* a `<ScrollWheelUp>` mapping breaks scrolling inside a Snacks picker
+  list, even though Snacks swallows the wheel in `vim.on_key` before the mapping layer runs and the
+  mapping never fires. With one registered, every wheel event costs the list an extra `CursorMoved`
+  round-trip, so `list:_move` re-applies its `'scrolloff'` clamp once more than it should and drags
+  the list back further than the wheel moved it. An empty
+  `vim.keymap.set("n", "<ScrollWheelUp>", function() end)` reproduces it with no plugin loaded. The
+  wheel is no longer mapped: it is watched with `vim.on_key` and claimed only when the pointer is
+  actually over a bar, so anywhere else Nvim behaves exactly as if the plugin were not loaded.
+- A click on a window separator no longer grabs the vertical scrollbar, so dragging the separator
+  resizes the split again. `getwininfo()` reports a width that excludes the separator while
+  `getmousepos()` places a click on it at that same column in the window to its left, and the hit
+  test bounded the column from below only.
+
+### Changed
+
+- The mouse wheel is no longer mapped, so your own `<ScrollWheelUp>`/`<ScrollWheelDown>` mappings
+  now run untouched instead of being captured and replayed.
+
 ## [0.3.2] - 2026-09-17
 
 ### Fixed
@@ -95,5 +126,10 @@ First release.
 - A box-drawing joint (`┘`) where the vertical and horizontal tracks meet.
 - `:help scroll`, headless test suites and CI on Neovim 0.11, stable and nightly.
 
-[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mihovilrak/scroll.nvim/releases/tag/v0.1.0

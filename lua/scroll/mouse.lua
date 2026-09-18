@@ -86,8 +86,14 @@ local function hit_test()
 
   local opts = config.options
   local info = at.info
-  if at.row < 0 or at.row >= info.height then
-    return nil, nil -- winbar, statusline, or outside the window
+  -- Both axes are bounded on both sides. `getwininfo().width` excludes the
+  -- vertical separator, but `getmousepos()` resolves a click on that separator
+  -- to the window on its left, reporting `col == info.width`; without the upper
+  -- bound that reads as a click on the bar and Nvim never gets the press that
+  -- starts a drag-resize. The same goes for the right border of a bordered
+  -- float, such as the Snacks list.
+  if at.row < 0 or at.row >= info.height or at.col < 0 or at.col >= info.width then
+    return nil, nil -- winbar, statusline, separator, or outside the window
   end
 
   local computed = render.compute(at.win)
@@ -350,16 +356,23 @@ local function wheel_step()
   return ver, hor
 end
 
---- A wheel event over a bar scrolls the window the bar belongs to. Left to
---- Nvim, it would scroll the bar's own float, whose rows would then no longer
---- line up with the window.
+--- Apply one wheel step to `win`, the window the pointer's bar belongs to.
+--- Left to Nvim, the event would scroll the bar's own float, whose rows would
+--- then no longer line up with the window.
+---
+--- The window state is read here rather than carried in from the hit test:
+--- this runs deferred, so a burst of wheel events has to compose step by step
+--- instead of every step starting from the same `topline`.
 --- @param dir "up"|"down"|"left"|"right"
-local function on_wheel(dir)
-  local orientation, at = hit_test()
-  if not orientation then
-    return false
+--- @param win integer
+local function apply_wheel(dir, win)
+  if not vim.api.nvim_win_is_valid(win) then
+    return
   end
-  local win, info = at.win, at.info
+  local info = vim.fn.getwininfo(win)[1]
+  if not info then
+    return
+  end
   local ver, hor = wheel_step()
   local computed = render.compute(win)
   if dir == "up" or dir == "down" then
@@ -375,42 +388,73 @@ local function on_wheel(dir)
   else
     local h = computed.horizontal
     if not h then
-      return true -- nothing to scroll sideways, but the float must not move
+      return -- nothing to scroll sideways, but the float must not move
     end
     local delta = dir == "right" and hor or -hor
     set_leftcol(win, math.max(0, math.min(info.leftcol + delta, h.total - h.page)))
   end
   pcall(vim.api.nvim__redraw, { win = win, valid = true, flush = true })
-  return true
 end
 
---- The Snacks explorer's list intercepts the wheel at the `vim.on_key` level
---- (`snacks/picker/core/list.lua`), before Nvim's mapping layer, and on
---- 0.11+ swallows it outright (returns `""`) to stop the window scrolling
---- natively too. That means `<ScrollWheelUp>`/`<ScrollWheelDown>` below never
---- fires for a wheel scroll over the list itself, which is the common case
---- since the bar is only the thin strip at the window's edge. Without this,
---- the thumb would sit stale until the next idle `SafeState` poll notices.
---- This watches the same way Snacks does and nudges our own poll once
---- Snacks' own (also deferred) scroll has had a chance to run.
-local SCROLL_WHEEL_UP = vim.api.nvim_replace_termcodes("<ScrollWheelUp>", true, true, true)
-local SCROLL_WHEEL_DOWN = vim.api.nvim_replace_termcodes("<ScrollWheelDown>", true, true, true)
+--- The wheel is watched with `vim.on_key` rather than mapped, and this is
+--- load-bearing: merely *having* a `<ScrollWheelUp>` mapping breaks scrolling
+--- inside the Snacks picker list, whichever way the mapping is written and
+--- even though it never fires. Snacks watches the wheel the same way and on
+--- 0.11+ swallows it (returns `""`) before the mapping layer runs, then
+--- scrolls its list itself. With a mapping registered, each wheel event costs
+--- the list an extra `CursorMoved` round-trip, so `list:_move` re-applies its
+--- 'scrolloff' clamp once more than it should and drags `top` back further
+--- than the wheel moved it -- the list creeps the wrong way and never reaches
+--- the top. An empty `vim.keymap.set("n", "<ScrollWheelUp>", function() end)`
+--- reproduces it on its own.
+---
+--- So: claim the event here, and only when the pointer is actually over one of
+--- our bars. Over anything else this returns nil and Nvim behaves exactly as
+--- if the plugin were not loaded. The one extra job is the Snacks explorer,
+--- which scrolls by rewriting its list and fires nothing we could hook.
+local WHEEL_KEYS = {}
+for lhs, dir in pairs({
+  ["<ScrollWheelUp>"] = "up",
+  ["<ScrollWheelDown>"] = "down",
+  ["<ScrollWheelLeft>"] = "left",
+  ["<ScrollWheelRight>"] = "right",
+}) do
+  WHEEL_KEYS[vim.api.nvim_replace_termcodes(lhs, true, true, true)] = dir
+end
 local wheel_watch_ns = vim.api.nvim_create_namespace("scroll.nvim.wheel_watch")
 
+--- @return string|nil  `""` to swallow the event, nil to leave it to Nvim
 local function watch_wheel(key, typed)
-  key = typed or key
-  if key ~= SCROLL_WHEEL_UP and key ~= SCROLL_WHEEL_DOWN then
-    return
+  local dir = WHEEL_KEYS[typed or key]
+  if not dir then
+    return nil
   end
-  local win = vim.fn.getmousepos().winid
-  if win ~= 0 and util.kind(win) == "snacks" then
-    -- A timer callback, not another `vim.schedule`, so this reliably runs
-    -- after Snacks' own `vim.schedule`-deferred `list:scroll` regardless of
-    -- which `vim.on_key` listener ran first.
-    vim.defer_fn(function()
-      require("scroll.events").schedule()
-    end, 0)
-  end
+  -- Nvim drops an `on_key` callback that errors, which would silently retire
+  -- the watcher for the rest of the session.
+  local ok, swallow = pcall(function()
+    local orientation, at = hit_test()
+    if orientation then
+      -- Deferred: an `on_key` callback runs before the key is dispatched, and
+      -- scrolling from inside it would fight whatever Nvim does next.
+      local win = at.win
+      vim.schedule(function()
+        pcall(apply_wheel, dir, win)
+      end)
+      return ""
+    end
+
+    local win = vim.fn.getmousepos().winid
+    if win ~= 0 and util.kind(win) == "snacks" then
+      -- A timer callback, not another `vim.schedule`, so this reliably runs
+      -- after Snacks' own `vim.schedule`-deferred `list:scroll` regardless of
+      -- which `vim.on_key` listener ran first.
+      vim.defer_fn(function()
+        require("scroll.events").schedule()
+      end, 0)
+    end
+    return nil
+  end)
+  return ok and swallow or nil
 end
 
 local MODES = { "n", "v", "s", "o", "i" }
@@ -419,18 +463,6 @@ local handlers = {
   ["<LeftMouse>"] = on_press,
   ["<LeftDrag>"] = on_drag,
   ["<LeftRelease>"] = on_release,
-  ["<ScrollWheelUp>"] = function()
-    return on_wheel("up")
-  end,
-  ["<ScrollWheelDown>"] = function()
-    return on_wheel("down")
-  end,
-  ["<ScrollWheelLeft>"] = function()
-    return on_wheel("left")
-  end,
-  ["<ScrollWheelRight>"] = function()
-    return on_wheel("right")
-  end,
 }
 
 function M.enable()
@@ -475,6 +507,7 @@ M._set_topline = set_topline
 M._set_leftcol = set_leftcol
 M._minimap_jump = minimap_jump
 M._watch_wheel = watch_wheel
+M._apply_wheel = apply_wheel
 M._scroll_to = scroll_to
 
 return M

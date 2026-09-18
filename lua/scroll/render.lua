@@ -42,8 +42,11 @@ function M.compute(win)
     return result
   end
 
-  -- Explorers get the vertical bar only.
+  -- Explorers get no marks and no minimap, and only the tree windows (never
+  -- the Snacks list, which resets its own `leftcol` on every redraw) can also
+  -- take the horizontal bar.
   local code = kind == "code"
+  local wants_horizontal = code or (kind == "explorer" and opts.explorer.horizontal)
   result.minimap = code and minimap.compute(win, info) or nil
 
   if opts.vertical.enabled then
@@ -69,7 +72,7 @@ function M.compute(win)
     end
   end
 
-  if opts.horizontal.enabled and code then
+  if opts.horizontal.enabled and wants_horizontal then
     local buf = vim.api.nvim_win_get_buf(win)
     local doc_w = width.get(buf, win, function()
       -- A background scan just finished and the document may now be wider

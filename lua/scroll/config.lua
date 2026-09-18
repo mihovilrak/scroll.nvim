@@ -143,13 +143,17 @@ M.defaults = {
 
   mouse = true,
 
-  --- Scrollbar for file explorer sidebars (vertical bar only). neo-tree and
-  --- nvim-tree are ordinary windows and only need their filetype listed; the
-  --- Snacks explorer draws only its visible rows, so it has its own adapter.
+  --- Scrollbar for file explorer sidebars. neo-tree and nvim-tree are ordinary
+  --- windows and only need their filetype listed; the Snacks explorer draws
+  --- only its visible rows, so it has its own adapter.
   explorer = {
     enabled = false,
     filetypes = { "neo-tree", "NvimTree" },
     snacks = true,
+    --- Horizontal bar as well, for the tree windows above. Never for the
+    --- Snacks list: it resets its own `leftcol` whenever it redraws, so a
+    --- sideways position there would not survive the next scroll.
+    horizontal = true,
     min_width = 10,
   },
 
@@ -197,6 +201,7 @@ local function validate(opts)
   vim.validate("minimap.enabled_for", opts.minimap.enabled_for, "function", true)
   vim.validate("minimap.dodge", opts.minimap.dodge, "table")
   vim.validate("explorer", opts.explorer, "table")
+  vim.validate("explorer.horizontal", opts.explorer.horizontal, "boolean")
   vim.validate("marks", opts.marks, "table")
   for _, source in ipairs(mark_sources) do
     vim.validate("marks." .. source, opts.marks[source], "table")

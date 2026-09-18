@@ -177,8 +177,7 @@ mouse ~
 
                                                       *scroll-option-explorer*
 explorer ~
-    Scrollbar for file explorer sidebars: a vertical bar only, without
-    marks.
+    Scrollbars for file explorer sidebars, without marks or a minimap.
     `enabled`     Boolean, default `false`.
     `filetypes`   Default `{ "neo-tree", "NvimTree" }`. Windows with these
                   filetypes get a bar even though `excluded_filetypes` and
@@ -186,6 +185,9 @@ explorer ~
     `snacks`      Boolean, default `true`. The Snacks explorer. Its list
                   only holds the visible rows, so the bar is measured from
                   the picker, and clicks, drags and the wheel scroll it.
+    `horizontal`  Boolean, default `true`. A horizontal bar as well, on the
+                  `filetypes` windows above. Never on the Snacks list: it
+                  resets its own sideways position whenever it redraws.
     `min_width`   Default `10`.
 
 excluded_filetypes ~

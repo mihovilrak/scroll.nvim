@@ -175,7 +175,11 @@ t.describe("floating windows get no bars", function()
   end
   vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
   local fwin = vim.api.nvim_open_win(fbuf, false, {
-    relative = "editor", row = 2, col = 2, width = 30, height = 10,
+    relative = "editor",
+    row = 2,
+    col = 2,
+    width = 30,
+    height = 10,
   })
   scroll.refresh()
   local b = tracks(fwin)
@@ -315,7 +319,7 @@ t.describe("a scrolled bar float is put back", function()
   t.eq(vim.fn.getwininfo(float)[1].topline, 1, "the thumb float scrolls back to its first row")
 end)
 
-t.describe("explorer sidebars get a vertical bar only when enabled", function()
+t.describe("explorer sidebars get bars only when enabled", function()
   vim.cmd("silent! only")
   local buf = fill(500, string.rep("n", 300))
   local win = vim.api.nvim_get_current_win()
@@ -329,8 +333,26 @@ t.describe("explorer sidebars get a vertical bar only when enabled", function()
   scroll.refresh()
   local bars = tracks(win)
   t.check(bars.vertical ~= nil, "with `explorer = true` it gets a vertical bar")
-  t.eq(bars.horizontal, nil, "but no horizontal bar")
-  t.eq(bars.minimap, nil, "and no minimap")
+  t.check(bars.horizontal ~= nil, "and a horizontal one, on by default")
+  t.eq(bars.minimap, nil, "but no minimap")
+
+  local mouse = require("scroll.mouse")
+  mouse._apply_wheel("right", win)
+  local leftcol = vim.fn.getwininfo(win)[1].leftcol
+  t.check(leftcol > 0, "the wheel scrolls the sidebar sideways")
+  mouse._scroll_to(win, "horizontal", 0, 0)
+  t.eq(vim.fn.getwininfo(win)[1].leftcol, 0, "and dragging the thumb back to the start undoes it")
+
+  scroll.setup({
+    visibility = "always",
+    mouse = false,
+    minimap = true,
+    explorer = { enabled = true, horizontal = false },
+  })
+  scroll.refresh()
+  bars = tracks(win)
+  t.check(bars.vertical ~= nil, "`explorer.horizontal = false` keeps the vertical bar")
+  t.eq(bars.horizontal, nil, "and drops the horizontal one")
 
   scroll.setup({ visibility = "always", mouse = false })
 end)
@@ -372,6 +394,7 @@ t.describe("the Snacks explorer list gets a bar measured from the picker", funct
   scroll.refresh()
   local bar = tracks(list_win).vertical
   t.check(bar ~= nil, "the list gets a vertical bar")
+  t.eq(tracks(list_win).horizontal, nil, "and never a horizontal one, whatever `explorer.horizontal` says")
   t.eq(bar and bar.zindex, 61, "drawn above the list float")
   t.eq(render.compute(list_win).vertical.pos, 0, "at the top of the list")
 
@@ -398,10 +421,10 @@ t.describe("the Snacks explorer list gets a bar measured from the picker", funct
 end)
 
 t.describe("a wheel scroll over the Snacks list redraws without waiting on SafeState", function()
-  -- Snacks intercepts the wheel via `vim.on_key`, before Nvim's mapping layer
-  -- runs, and swallows it on 0.11+ (see snacks/picker/core/list.lua). So our
-  -- own `<ScrollWheelUp/Down>` keymap never fires for it, and only the
-  -- `vim.on_key` watcher below stands in for a real SafeState poll.
+  -- Snacks intercepts the wheel via `vim.on_key` and swallows it on 0.11+
+  -- (see snacks/picker/core/list.lua), scrolling its list itself. Over the
+  -- list body the pointer is not on our bar, so the watcher leaves the event
+  -- alone and only nudges a redraw, standing in for a SafeState poll.
   vim.cmd("silent! only")
   local list_buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, vim.split(string.rep("item\n", 29), "\n"))
@@ -456,6 +479,61 @@ t.describe("a wheel scroll over the Snacks list redraws without waiting on SafeS
 
   package.loaded["snacks.picker.core.picker"] = nil
   vim.api.nvim_win_close(list_win, true)
+  scroll.setup({ visibility = "always", mouse = false })
+end)
+
+t.describe("the wheel is watched, not mapped", function()
+  -- Load-bearing: a `<ScrollWheelUp>` mapping breaks scrolling inside the
+  -- Snacks picker list even when it never fires, so the wheel has to stay
+  -- entirely out of the mapping layer.
+  scroll.setup({ visibility = "always", mouse = true })
+  for _, lhs in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>", "<ScrollWheelLeft>", "<ScrollWheelRight>" }) do
+    for _, mode in ipairs({ "n", "v", "i" }) do
+      t.eq(next(vim.fn.maparg(lhs, mode, false, true)), nil, lhs .. " is left unmapped in " .. mode)
+    end
+  end
+  t.check(next(vim.fn.maparg("<LeftMouse>", "n", false, true)) ~= nil, "<LeftMouse> is still mapped")
+  scroll.setup({ visibility = "always", mouse = false })
+end)
+
+t.describe("the vertical bar stops before the window separator", function()
+  vim.cmd("silent! only")
+  fill(500)
+  scroll.setup({ visibility = "always", mouse = true })
+  vim.cmd("vsplit")
+  local left
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if not require("scroll.util").is_float(w) then
+      local i = vim.fn.getwininfo(w)[1]
+      if not left or i.wincol < vim.fn.getwininfo(left)[1].wincol then
+        left = w
+      end
+    end
+  end
+  local info = vim.fn.getwininfo(left)[1]
+  scroll.refresh()
+  t.check(render.compute(left).vertical ~= nil, "the left window carries a vertical bar")
+
+  -- `_watch_wheel` returns "" exactly when the hit test claims the pointer,
+  -- which is the only way to observe `hit_test` from outside a real UI.
+  local up = vim.api.nvim_replace_termcodes("<ScrollWheelUp>", true, true, true)
+  local real_getmousepos = vim.fn.getmousepos
+  local function claimed(col)
+    vim.fn.getmousepos = function()
+      return { winid = left, screenrow = info.winrow + 2, screencol = info.wincol + col }
+    end
+    local ok, ret = pcall(require("scroll.mouse")._watch_wheel, up, up)
+    vim.fn.getmousepos = real_getmousepos
+    return ok and ret
+  end
+
+  t.eq(claimed(info.width - 1), "", "the bar's own column is ours")
+  -- `getwininfo().width` excludes the separator, but `getmousepos()` puts a
+  -- click on it at `col == width` in the window to its left.
+  t.eq(claimed(info.width), nil, "the separator column is not, so the resize drag can start")
+  t.eq(claimed(0), nil, "and neither is the text area")
+
+  vim.cmd("silent! only")
   scroll.setup({ visibility = "always", mouse = false })
 end)
 

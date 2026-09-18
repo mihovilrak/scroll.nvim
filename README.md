@@ -4,7 +4,7 @@ VS Code-style scrollbars for Neovim, **vertical and horizontal** overlaid on the
 draggable with the mouse, and auto-hiding when idle. The vertical track doubles as an **overview
 ruler**, marking diagnostics, git changes, search matches and the code block around the cursor
 across the whole buffer, and an optional **minimap** shows the buffer's shape in its syntax colours,
-with a git change gutter. File explorer sidebars (Snacks, neo-tree, nvim-tree) can get a scrollbar
+with a git change gutter. File explorer sidebars (Snacks, neo-tree, nvim-tree) can get scrollbars
 too.
 
 Neovim has no built-in scrollbar, and while `nvim-scrollview` covers the vertical case, nothing
@@ -146,11 +146,12 @@ require("scroll").setup({
     },
   },
 
-  -- Scrollbar for file explorer sidebars: vertical bar only. Off by default.
+  -- Scrollbar for file explorer sidebars. Off by default.
   explorer = {
     enabled = false,
     filetypes = { "neo-tree", "NvimTree" }, -- ordinary windows, allowed despite `excluded_*`
     snacks = true,          -- the Snacks explorer (LazyVim's default)
+    horizontal = true,      -- horizontal bar too, on the `filetypes` windows
     min_width = 10,
   },
 
@@ -228,9 +229,14 @@ already keeps, so buffers without treesitter highlighting get none. A node count
 
 ### Explorer
 
-With `explorer = true`, neo-tree and nvim-tree windows get a vertical bar (no marks, minimap or
-horizontal bar). The Snacks explorer only ever holds its visible rows in its buffer, so its bar is
-measured from the picker itself, and clicking, dragging or using the wheel on it scrolls the list.
+With `explorer = true`, neo-tree and nvim-tree windows get a vertical bar and, when a name runs
+past the sidebar's edge, a horizontal one as well (no marks and no minimap). Set
+`explorer = { horizontal = false }` for the vertical bar alone.
+
+The Snacks explorer only ever holds its visible rows in its buffer, so its bar is measured from the
+picker itself, and clicking, dragging or using the wheel on it scrolls the list. It gets no
+horizontal bar: its list resets its own sideways position every time it redraws, so one would not
+survive the next scroll.
 
 ### Commands
 
