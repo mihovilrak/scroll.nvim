@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options. Such changes are listed under **Changed**.
 
+## 0.4.2 - 2026-09-21
+
+### Fixed
+
+- Added read-only token to CI, so stylua check passes can run.
+
 ## [0.4.1] - 2026-09-21
 
 ### Fixed
