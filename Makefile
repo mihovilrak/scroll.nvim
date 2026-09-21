@@ -1,11 +1,11 @@
-.PHONY: test test-geometry test-measure test-width test-integration test-ruler test-minimap test-scope fmt
+.PHONY: test test-geometry test-measure test-width test-config test-integration test-ruler test-minimap test-scope fmt fmt-check
 
 # Not `NVIM`: Nvim exports that as its server address inside `:terminal`.
 NVIM_BIN ?= nvim
 
 # All suites run in a headless Nvim with no user config, so results do not
 # depend on whatever plugins happen to be installed.
-test: test-geometry test-measure test-width test-integration test-ruler test-minimap test-scope
+test: test-geometry test-measure test-width test-config test-integration test-ruler test-minimap test-scope
 
 test-geometry:
 	@$(NVIM_BIN) --headless -u NONE -l tests/geometry_spec.lua
@@ -15,6 +15,9 @@ test-measure:
 
 test-width:
 	@$(NVIM_BIN) --headless -u NONE -l tests/width_spec.lua
+
+test-config:
+	@$(NVIM_BIN) --headless -u NONE -l tests/config_spec.lua
 
 test-integration:
 	@$(NVIM_BIN) --headless -u NONE -l tests/integration_spec.lua
@@ -29,4 +32,7 @@ test-scope:
 	@$(NVIM_BIN) --headless -u NONE -l tests/scope_spec.lua
 
 fmt:
-	@stylua lua/ tests/
+	@stylua lua/ tests/ plugin/
+
+fmt-check:
+	@stylua --check lua/ tests/ plugin/

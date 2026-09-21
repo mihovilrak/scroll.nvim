@@ -68,9 +68,19 @@ local function start_scan(buf, entry, on_done)
     0,
     5,
     vim.schedule_wrap(function()
+      if entry.timer ~= timer then
+        return
+      end
       -- The buffer may have been unloaded or edited out from under the scan.
-      if not vim.api.nvim_buf_is_valid(buf) or vim.api.nvim_buf_get_changedtick(buf) ~= tick then
+      if not vim.api.nvim_buf_is_valid(buf) then
         stop_scan(entry)
+        return
+      end
+      if vim.api.nvim_buf_get_changedtick(buf) ~= tick then
+        -- An edit-triggered refresh may already have seen this timer and left
+        -- it alone. Restart here so convergence does not depend on a later,
+        -- unrelated call to `get`.
+        start_scan(buf, entry, on_done)
         return
       end
 
@@ -101,19 +111,27 @@ end
 --- @param buf integer
 --- @param win integer  window whose visible range seeds the estimate
 --- @param on_update function|nil  called when a background scan finishes
+--- @param info table|nil  an already captured getwininfo() entry
 --- @return integer
-function M.get(buf, win, on_update)
+function M.get(buf, win, on_update, info)
   local entry = cache[buf]
   if not entry then
     entry = { width = 0, scan_max = 0, row = 0 }
     cache[buf] = entry
   end
 
-  if entry.tick ~= vim.api.nvim_buf_get_changedtick(buf) and not entry.timer then
+  local tick = vim.api.nvim_buf_get_changedtick(buf)
+  if entry.tick ~= tick and not entry.timer then
     start_scan(buf, entry, on_update)
   end
 
-  local info = vim.fn.getwininfo(win)[1]
+  -- A completed width for this exact buffer state cannot be improved by
+  -- rescanning the visible lines.
+  if entry.tick == tick and not entry.timer then
+    return entry.width
+  end
+
+  info = info or vim.fn.getwininfo(win)[1]
   local visible = 0
   if info then
     visible = widest(buf, vim.api.nvim_buf_get_lines(buf, info.topline - 1, info.botline, false))

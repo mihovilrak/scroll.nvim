@@ -17,4 +17,8 @@ jobs:
         with:
           neovim: true
           version: ${{ matrix.neovim }}
+      - uses: JohnnyMorganz/stylua-action@v4
+        with:
+          version: latest
+          args: --check lua tests plugin
       - run: make test

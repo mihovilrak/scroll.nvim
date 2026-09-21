@@ -3,7 +3,36 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
-defaults or options; such changes are listed under **Changed**.
+defaults or options. Such changes are listed under **Changed**.
+
+## [0.4.1] - 2026-09-21
+
+### Fixed
+
+- Disabling or reconfiguring scroll.nvim now restores pre-existing mouse mappings exactly instead
+  of permanently removing them. Callback, RHS, expression and buffer-local mappings are preserved,
+  and a mapping installed by the user or another plugin while scroll.nvim is active is left alone.
+- Horizontal scrollbars with `horizontal.height > 1` now paint the track and thumb on every row of
+  the float instead of covering editor text with blank rows.
+- Invalid option values now fail synchronously during `setup()` with the offending option name.
+  Dimensions and delays must be non-negative or positive integers as appropriate, glyphs must fit
+  one cell, lists and booleans are checked, and the minimap must fit in eligible windows. A failed
+  setup no longer publishes the invalid options.
+- Editing a large buffer while its background width scan is running now starts a replacement scan,
+  so the horizontal thumb converges without waiting for an unrelated later refresh.
+- Git marks are cleared when a buffer grows beyond `marks.git.max_lines` or gitsigns detaches, and
+  the built-in Git fallback resumes after a detach.
+- Invalid search patterns are cached as empty results instead of being recompiled on every scroll.
+- The Tree-sitter minimap colour test now waits for the intentionally asynchronous parse, removing
+  an intermittent test failure.
+
+### Changed
+
+- Completed document widths no longer rescan visible lines on every horizontal refresh, and window
+  classification and metrics are shared across each render pass.
+- Scope node-type lookup is built once per configuration, and bar cleanup no longer deep-copies bar
+  objects.
+- CI now checks StyLua formatting in addition to running the eight headless test suites.
 
 ## [0.4.0] - 2026-09-18
 
@@ -126,7 +155,8 @@ First release.
 - A box-drawing joint (`┘`) where the vertical and horizontal tracks meet.
 - `:help scroll`, headless test suites and CI on Neovim 0.11, stable and nightly.
 
-[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.0...v0.3.1

@@ -10,6 +10,7 @@ vim.cmd("redraw")
 
 local scroll = require("scroll")
 local config = require("scroll.config")
+local git = require("scroll.marks.git")
 local render = require("scroll.render")
 local ruler = require("scroll.ruler")
 local measure = require("scroll.measure")
@@ -313,6 +314,25 @@ t.describe("git marks use their own column on a wide track", function()
   vim.diagnostic.reset(ns, buf)
 end)
 
+t.describe("detaching gitsigns clears its cached hunks", function()
+  vim.cmd("silent! only")
+  local buf = fill(500)
+  git.forget(buf)
+  package.loaded.gitsigns = {
+    get_hunks = function()
+      return { { type = "add", added = { start = 20, count = 2 }, removed = { start = 0, count = 0 } } }
+    end,
+  }
+  vim.b[buf].gitsigns_status_dict = { head = "main" }
+  local ranges = git.get(buf)
+  t.eq(#ranges, 1, "gitsigns initially supplies a hunk")
+
+  vim.b[buf].gitsigns_status_dict = nil
+  package.loaded.gitsigns = nil
+  ranges = git.get(buf)
+  t.eq(#ranges, 0, "the stale hunk disappears as soon as gitsigns detaches")
+end)
+
 t.describe("without gitsigns, the buffer is diffed against the index", function()
   if vim.fn.executable("git") == 0 then
     io.write("  (skipped: no git)\n")
@@ -354,6 +374,11 @@ t.describe("without gitsigns, the buffer is diffed against the index", function(
   t.check(ok, "unsaved edits are marked once the debounce passes")
   t.eq(got[math.floor(249 * height / 501) .. ":0"], "ScrollMarkChange", "the edited line is a change")
   t.eq(got[math.floor(399 * height / 501) .. ":0"], "ScrollMarkAdd", "the inserted line is an add")
+
+  config.options.marks.git.max_lines = 100
+  t.eq(count(cells(win)), 0, "crossing max_lines clears previously computed marks")
+  config.options.marks.git.max_lines = 20000
+  t.eq(count(cells(win)), 2, "dropping below the limit recomputes the marks")
 
   vim.cmd("bwipeout!")
   vim.fn.delete(dir, "rf")

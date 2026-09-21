@@ -98,13 +98,9 @@ t.describe("the ruler draws the scope's ends", function()
 
   require("scroll.config").options.marks.scope.enabled = false
   cells = ruler.cells(win, height, vim.api.nvim_buf_line_count(buf), nil)
-  t.eq(
-    #vim.tbl_filter(function(c)
-      return c.hl == "ScrollMarkScope"
-    end, cells),
-    0,
-    "and not when disabled"
-  )
+  t.eq(#vim.tbl_filter(function(c)
+    return c.hl == "ScrollMarkScope"
+  end, cells), 0, "and not when disabled")
   require("scroll.config").options.marks.scope.enabled = true
 end)
 

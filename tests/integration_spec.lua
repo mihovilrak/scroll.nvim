@@ -92,6 +92,38 @@ t.describe("horizontal bar appears only with overflow and nowrap", function()
   t.eq(tracks(win).horizontal, nil, "wrapped text has nothing to scroll sideways")
 end)
 
+t.describe("a multi-row horizontal bar paints every row", function()
+  vim.cmd("silent! only")
+  scroll.setup({ visibility = "always", mouse = false, horizontal = { height = 2, char = "█" } })
+  fill(50, string.rep("x", 400))
+  local win = vim.api.nvim_get_current_win()
+  vim.wo[win].wrap = false
+  scroll.refresh()
+
+  local horizontal
+  for _, float in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local parent, orientation = render.owner_of(float)
+    if parent == win and orientation == "horizontal" then
+      horizontal = float
+    end
+  end
+  t.check(horizontal ~= nil, "the horizontal float exists")
+  t.eq(vim.api.nvim_win_get_config(horizontal).height, 2, "the float is two rows high")
+  local fbuf = vim.api.nvim_win_get_buf(horizontal)
+  local lines = vim.api.nvim_buf_get_lines(fbuf, 0, -1, false)
+  t.eq(#lines, 2, "both rows have buffer content")
+  t.eq(lines[1], lines[2], "both rows paint the same track and thumb")
+
+  local highlighted = {}
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(fbuf, -1, 0, -1, { details = true })) do
+    if mark[4].hl_group == "ScrollThumbCell" then
+      highlighted[mark[2]] = true
+    end
+  end
+  t.check(highlighted[0] and highlighted[1], "the thumb is highlighted on both rows")
+  scroll.setup({ visibility = "always", mouse = false })
+end)
+
 t.describe("horizontal thumb follows leftcol", function()
   vim.cmd("silent! only")
   fill(50, string.rep("y", 400))
@@ -550,6 +582,65 @@ t.describe("setup accepts booleans and can be called again", function()
   t.check(not scroll.is_enabled(), "setup({ enabled = false }) stops a running plugin")
   scroll.setup({ visibility = "always", mouse = false })
   t.check(scroll.is_enabled(), "and a later setup starts it again")
+end)
+
+t.describe("mouse mappings survive enable, misses, disable, and setup", function()
+  scroll.disable()
+  local callback_hits = 0
+  local original_callback = function()
+    callback_hits = callback_hits + 1
+  end
+  vim.keymap.set("n", "<LeftMouse>", original_callback, { desc = "original callback" })
+  vim.keymap.set("x", "<LeftMouse>", "<Cmd>let g:scroll_rhs_hits += 1<CR>", { remap = true })
+  vim.keymap.set("i", "<LeftMouse>", "'<Cmd>let g:scroll_expr_hits += 1<CR>'", { expr = true })
+  vim.keymap.set("n", "<LeftDrag>", "<Nop>", { buffer = 0, desc = "buffer local" })
+  vim.g.scroll_rhs_hits, vim.g.scroll_expr_hits = 0, 0
+
+  scroll.setup({ visibility = "always", mouse = true })
+  local function global(mode, lhs)
+    for _, mapping in ipairs(vim.api.nvim_get_keymap(mode)) do
+      if mapping.lhs == lhs then
+        return mapping
+      end
+    end
+  end
+
+  -- Calling the wrappers directly models a click that misses every bar in a
+  -- headless test, and exercises all three fallthrough forms.
+  global("n", "<LeftMouse>").callback()
+  global("x", "<LeftMouse>").callback()
+  global("i", "<LeftMouse>").callback()
+  vim.api.nvim_feedkeys("", "x", false)
+  vim.wait(100, function()
+    return vim.g.scroll_rhs_hits == 1 and vim.g.scroll_expr_hits == 1
+  end, 5)
+  t.eq(callback_hits, 1, "a callback mapping receives a missed click")
+  t.eq(vim.g.scroll_rhs_hits, 1, "an RHS mapping receives a missed click")
+  t.eq(vim.g.scroll_expr_hits, 1, "an expression mapping's result is replayed")
+
+  scroll.disable()
+  t.eq(global("n", "<LeftMouse>").callback, original_callback, "the callback mapping is restored exactly")
+  t.eq(global("x", "<LeftMouse>").rhs, "<Cmd>let g:scroll_rhs_hits += 1<CR>", "the RHS mapping is restored")
+  t.eq(global("i", "<LeftMouse>").expr, 1, "the expression flag is restored")
+  t.eq(vim.fn.maparg("<LeftDrag>", "n", false, true).buffer, 1, "the buffer-local mapping survives")
+
+  scroll.setup({ visibility = "always", mouse = true })
+  scroll.setup({ visibility = "always", mouse = true })
+  scroll.disable()
+  t.eq(global("n", "<LeftMouse>").callback, original_callback, "repeated setup still restores the original")
+
+  scroll.setup({ visibility = "always", mouse = true })
+  local replacement = function() end
+  vim.keymap.set("n", "<LeftRelease>", replacement)
+  scroll.disable()
+  t.eq(global("n", "<LeftRelease>").callback, replacement, "disable preserves a mapping installed later")
+
+  vim.keymap.del("n", "<LeftMouse>")
+  vim.keymap.del("x", "<LeftMouse>")
+  vim.keymap.del("i", "<LeftMouse>")
+  vim.keymap.del("n", "<LeftRelease>")
+  vim.keymap.del("n", "<LeftDrag>", { buffer = 0 })
+  scroll.setup({ visibility = "always", mouse = false })
 end)
 
 t.finish("integration")

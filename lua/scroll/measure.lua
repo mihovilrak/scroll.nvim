@@ -149,13 +149,14 @@ local function rows_above(win, buf, entry, view, total)
 end
 
 --- @param win integer
+--- @param info table|nil  an already captured getwininfo() entry
 --- @return table|nil  `{ total, offset, page }` for the vertical bar
-function M.vertical(win)
+function M.vertical(win, info)
   local buf = vim.api.nvim_win_get_buf(win)
 
   -- `getwininfo().height` is the text height; `nvim_win_get_height` includes
   -- the 'winbar' row, which is not part of the scrollable area.
-  local info = vim.fn.getwininfo(win)[1]
+  info = info or vim.fn.getwininfo(win)[1]
   local page = info and info.height or 0
   if page < 1 then
     return nil
@@ -164,11 +165,7 @@ function M.vertical(win)
   local key = cache_key(win, buf)
   local entry = cache[win]
   local folded = vim.wo[win].foldenable
-  if
-    not entry
-    or entry.key ~= key
-    or (folded and folds_changed(win, entry, info.topline, info.botline))
-  then
+  if not entry or entry.key ~= key or (folded and folds_changed(win, entry, info.topline, info.botline)) then
     -- Anything that changes rendered height invalidates both the total and
     -- the anchor the telescoping walks from.
     entry = { key = key, total = vim.api.nvim_win_text_height(win, {}).all, seen = {} }
@@ -258,13 +255,14 @@ end
 
 --- @param win integer
 --- @param doc_width integer  widest line in the buffer, in display columns
+--- @param info table|nil  an already captured getwininfo() entry
 --- @return table|nil  `{ total, offset, page, textoff }` for the horizontal bar
-function M.horizontal(win, doc_width)
+function M.horizontal(win, doc_width, info)
   if vim.wo[win].wrap then
     return nil -- wrapped text never scrolls sideways
   end
 
-  local info = vim.fn.getwininfo(win)[1]
+  info = info or vim.fn.getwininfo(win)[1]
   if not info then
     return nil
   end

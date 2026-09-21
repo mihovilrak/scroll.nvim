@@ -82,6 +82,30 @@ t.describe("large buffers scan in the background without blocking", function()
   t.eq(width.get(buf, win), 500, "the background scan finds the off-screen widest line")
 end)
 
+t.describe("an edit during a background scan starts a replacement", function()
+  width.reset()
+  local lines = {}
+  for i = 1, 30000 do
+    lines[i] = string.rep("x", 40)
+  end
+  local buf = make(lines)
+  local done = false
+  width.get(buf, win, function()
+    done = true
+  end)
+
+  -- Change an off-screen line while the initial timer is live. Do not poll
+  -- `get`: the stale scan itself must arrange the replacement.
+  vim.api.nvim_buf_set_lines(buf, 24999, 25000, false, { string.rep("z", 777) })
+  t.check(
+    vim.wait(5000, function()
+      return done
+    end, 10),
+    "the replacement scan completes without another get call"
+  )
+  t.eq(width.get(buf, win), 777, "the replacement publishes the edited width")
+end)
+
 t.describe("forget drops the cache and stops timers", function()
   width.reset()
   local buf = make({ string.rep("q", 77) })

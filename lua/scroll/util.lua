@@ -67,9 +67,10 @@ end
 --- Whether the minimap belongs over `win`: only ordinary file buffers, not
 --- terminals, dashboards or scratch views, which are not code.
 --- @param win integer
+--- @param kind string|nil  already classified window kind
 --- @return boolean
-function M.minimap_eligible(win)
-  if M.kind(win) ~= "code" then
+function M.minimap_eligible(win, kind)
+  if (kind or M.kind(win)) ~= "code" then
     return false
   end
   local mm = config.options.minimap

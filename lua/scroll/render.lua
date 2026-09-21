@@ -32,11 +32,12 @@ end
 --- Geometry for both bars, or nil where that bar should not be shown.
 --- Kept separate from drawing so tests can assert placement without floats.
 --- @param win integer
+--- @param snapshot table|nil  already captured `{ info, kind }`
 --- @return table  `{ info, kind, vertical = {pos,size}?, horizontal = {pos,size,textoff,track}?, minimap? }`
-function M.compute(win)
+function M.compute(win, snapshot)
   local opts = config.options
-  local info = vim.fn.getwininfo(win)[1]
-  local kind = util.kind(win)
+  local info = snapshot and snapshot.info or vim.fn.getwininfo(win)[1]
+  local kind = snapshot and snapshot.kind or util.kind(win)
   local result = { info = info, kind = kind }
   if not info then
     return result
@@ -47,14 +48,14 @@ function M.compute(win)
   -- take the horizontal bar.
   local code = kind == "code"
   local wants_horizontal = code or (kind == "explorer" and opts.explorer.horizontal)
-  result.minimap = code and minimap.compute(win, info) or nil
+  result.minimap = code and minimap.compute(win, info, kind) or nil
 
   if opts.vertical.enabled then
     local m
     if kind == "snacks" then
       m = explorer.measure(win, info.height)
     else
-      m = measure.vertical(win)
+      m = measure.vertical(win, info)
     end
     if m then
       local g = geometry.thumb({
@@ -78,8 +79,8 @@ function M.compute(win)
       -- A background scan just finished and the document may now be wider
       -- than we thought; redraw so the thumb reflects it.
       M.refresh(win)
-    end)
-    local m = measure.horizontal(win, doc_w)
+    end, info)
+    local m = measure.horizontal(win, doc_w, info)
     if m then
       -- Leave the bottom-right corner to the vertical bar (and the minimap)
       -- rather than letting them overlap there.
@@ -258,8 +259,13 @@ end
 
 --- @param win integer
 --- @param quiet boolean|nil  only redraw bars that are already showing
-function M.refresh(win, quiet)
-  if not util.is_eligible(win) then
+--- @param snapshot table|nil  already captured `{ info, kind }`
+function M.refresh(win, quiet, snapshot)
+  if not snapshot then
+    local kind = util.kind(win)
+    snapshot = { kind = kind, info = kind and vim.fn.getwininfo(win)[1] or nil }
+  end
+  if not snapshot.kind then
     M.clear(win)
     return
   end
@@ -272,7 +278,7 @@ function M.refresh(win, quiet)
   if skip_vertical and skip_horizontal and skip_minimap then
     return
   end
-  local computed = M.compute(win)
+  local computed = M.compute(win, snapshot)
   local info = computed.info
   if not info then
     return
@@ -294,11 +300,19 @@ end
 --- Refresh every ordinary window in the current tabpage.
 --- @param quiet boolean|nil  only redraw bars that are already showing
 function M.refresh_all(quiet)
+  local snapshots, current = {}, {}
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    current[win] = true
+    local kind = util.kind(win)
+    snapshots[win] = { kind = kind, info = kind and vim.fn.getwininfo(win)[1] or nil }
+  end
   -- Windows that stopped carrying bars are not among the targets below, so
-  -- they would otherwise keep them.
-  M.prune()
-  for _, win in ipairs(util.target_windows()) do
-    M.refresh(win, quiet)
+  -- they would otherwise keep them. Reuse the classification just captured.
+  M.prune(snapshots, current)
+  for win, snapshot in pairs(snapshots) do
+    if snapshot.kind then
+      M.refresh(win, quiet, snapshot)
+    end
   end
 end
 
@@ -336,7 +350,7 @@ function M.clear(win)
 end
 
 function M.clear_all()
-  for win in pairs(vim.deepcopy(bars)) do
+  for _, win in ipairs(vim.tbl_keys(bars)) do
     M.clear(win)
   end
   bars = {}
@@ -358,9 +372,11 @@ end
 
 --- Drop bars of windows that no longer exist or no longer carry bars (a
 --- buffer turned into a terminal without any event we saw, say).
-function M.prune()
+function M.prune(snapshots, current)
   for _, win in ipairs(vim.tbl_keys(bars)) do
-    if not util.is_eligible(win) then
+    local in_current = current and current[win]
+    local eligible = in_current and snapshots[win].kind ~= nil or (not in_current and util.is_eligible(win))
+    if not eligible then
       M.clear(win)
     end
   end

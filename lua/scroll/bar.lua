@@ -67,24 +67,33 @@ local function paint(buf, ns, opts)
     local before = string.rep(opts.track_char, opts.pos)
     local thumb = string.rep(opts.char, opts.size)
     local after = string.rep(opts.track_char, opts.length - opts.pos - opts.size)
-    lines[1] = before .. thumb .. after
-    mark = {
-      start_row = 0,
-      start_col = #before,
-      end_row = 0,
-      end_col = #before + #thumb,
-    }
+    local line = before .. thumb .. after
+    for i = 1, opts.height do
+      lines[i] = line
+    end
+    mark = { start_col = #before, end_col = #before + #thumb }
   end
 
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-  vim.api.nvim_buf_set_extmark(buf, ns, mark.start_row, mark.start_col, {
-    end_row = mark.end_row,
-    end_col = mark.end_col,
-    hl_group = opts.hovered and highlight.THUMB_CELL_HOVER or highlight.THUMB_CELL,
-    hl_eol = true,
-    priority = 200,
-  })
+  local thumb_hl = opts.hovered and highlight.THUMB_CELL_HOVER or highlight.THUMB_CELL
+  if opts.orientation == "horizontal" then
+    for row = 0, opts.height - 1 do
+      vim.api.nvim_buf_set_extmark(buf, ns, row, mark.start_col, {
+        end_col = mark.end_col,
+        hl_group = thumb_hl,
+        priority = 200,
+      })
+    end
+  else
+    vim.api.nvim_buf_set_extmark(buf, ns, mark.start_row, mark.start_col, {
+      end_row = mark.end_row,
+      end_col = mark.end_col,
+      hl_group = thumb_hl,
+      hl_eol = true,
+      priority = 200,
+    })
+  end
 
   -- Ruler marks replace the glyph in their cell. On the track they keep its
   -- background (`combine`). On a block thumb they sit on the thumb's colour,
@@ -134,9 +143,19 @@ function Bar:update(parent, opts)
   -- Skip the redraw entirely when nothing observable changed. Scroll events
   -- fire far more often than the thumb actually moves.
   local sig = table.concat({
-    parent, opts.row, opts.col, opts.width, opts.height, opts.winblend,
-    tostring(opts.pos), tostring(opts.size), tostring(opts.hovered),
-    tostring(opts.char), tostring(opts.track_char), tostring(opts.corner), opts.content_sig or "",
+    parent,
+    opts.row,
+    opts.col,
+    opts.width,
+    opts.height,
+    opts.winblend,
+    tostring(opts.pos),
+    tostring(opts.size),
+    tostring(opts.hovered),
+    tostring(opts.char),
+    tostring(opts.track_char),
+    tostring(opts.corner),
+    opts.content_sig or "",
   }, ":")
   local drifted = self:is_valid() and self:drifted()
   if self.drawn == sig and self:is_valid() and not self.hidden and not drifted then
@@ -190,14 +209,6 @@ function Bar:hide()
   end
   vim.api.nvim_win_set_config(self.win, { hide = true })
   self.hidden = true
-end
-
-function Bar:show()
-  if not self.hidden or not self:is_valid() then
-    return
-  end
-  vim.api.nvim_win_set_config(self.win, { hide = false })
-  self.hidden = false
 end
 
 function Bar:close()

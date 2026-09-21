@@ -47,7 +47,11 @@ scroll.setup({
 
 t.describe("encode: dots follow the text", function()
   t.eq(minimap.encode({ "ab" }, 1, 1, 8), braille(0x01 + 0x08), "two chars light the top row of one cell")
-  t.eq(minimap.encode({ "a", "a", "a", "a" }, 1, 1, 8), braille(0x01 + 0x02 + 0x04 + 0x40), "four lines fill the left column")
+  t.eq(
+    minimap.encode({ "a", "a", "a", "a" }, 1, 1, 8),
+    braille(0x01 + 0x02 + 0x04 + 0x40),
+    "four lines fill the left column"
+  )
   t.eq(minimap.encode({ " b" }, 1, 1, 8), braille(0x08), "blanks leave dots dark")
   t.eq(minimap.encode({ "abcd" }, 2, 1, 8), braille(0x09) .. braille(0x09), "text spills into the next cell")
   t.eq(minimap.encode({ "abcd" }, 1, 2, 8), braille(0x09), "two columns per dot halve the width")
@@ -198,12 +202,20 @@ t.describe("the map takes the buffer's treesitter colours", function()
   vim.cmd("normal! gg")
   scroll.refresh()
   local fbuf = vim.api.nvim_win_get_buf(float_of(win, "minimap"))
-  local groups = {}
-  for _, m in ipairs(colour_marks(fbuf)) do
-    if m.row == 0 then
-      groups[#groups + 1] = m.hl
+  local groups
+  local coloured = vim.wait(2000, function()
+    scroll.refresh()
+    groups = {}
+    for _, m in ipairs(colour_marks(fbuf)) do
+      if m.row == 0 then
+        groups[#groups + 1] = m.hl
+      end
     end
-  end
+    return groups[1] == "@keyword.lua"
+      and vim.tbl_contains(groups, "@string.lua")
+      and vim.tbl_contains(groups, "@comment.lua")
+  end, 10)
+  t.check(coloured, "the asynchronous parse eventually colours the first row")
   -- "local" | " v1 = " | "'text'" | " -- note", 2 dot columns per cell.
   t.eq(groups[1], "@keyword.lua", "the row starts as a keyword")
   t.check(vim.tbl_contains(groups, "@string.lua"), "strings keep their colour")

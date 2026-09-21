@@ -177,37 +177,154 @@ M.options = vim.deepcopy(M.defaults)
 local sections = { "vertical", "horizontal", "marks", "minimap", "explorer" }
 local mark_sources = { "diagnostics", "git", "search", "scope" }
 
---- Validate the parts of a user config where a wrong value would otherwise
---- fail later in a confusing place (inside a redraw, or as a bad window config).
+local function integer_at_least(min)
+  return function(v)
+    return type(v) == "number" and v == math.floor(v) and v >= min
+  end
+end
+
+local function percent(v)
+  return integer_at_least(0)(v) and v <= 100
+end
+
+local function cell(v)
+  return type(v) == "string" and v ~= "" and vim.fn.strdisplaywidth(v) == 1
+end
+
+local function string_list(v)
+  if type(v) ~= "table" or not vim.islist(v) then
+    return false
+  end
+  for _, item in ipairs(v) do
+    if type(item) ~= "string" then
+      return false
+    end
+  end
+  return true
+end
+
+local function severity_filter(v)
+  local function severity(n)
+    return type(n) == "number"
+      and n == math.floor(n)
+      and n >= vim.diagnostic.severity.ERROR
+      and n <= vim.diagnostic.severity.HINT
+  end
+  if v == nil or severity(v) then
+    return true
+  end
+  if type(v) ~= "table" or not vim.islist(v) then
+    if type(v) ~= "table" then
+      return false
+    end
+    for key in pairs(v) do
+      if key ~= "min" and key ~= "max" then
+        return false
+      end
+    end
+    return (v.min == nil or severity(v.min)) and (v.max == nil or severity(v.max)) and (v.min ~= nil or v.max ~= nil)
+  end
+  for _, item in ipairs(v) do
+    if not severity(item) then
+      return false
+    end
+  end
+  return #v > 0
+end
+
+local function bool(name, value)
+  vim.validate(name, value, "boolean")
+end
+
+local function int(name, value, min)
+  vim.validate(name, value, integer_at_least(min), ("an integer >= %d"):format(min))
+end
+
+local function glyph(name, value)
+  vim.validate(name, value, cell, "a single-cell string")
+end
+
+--- Validate the complete public schema before any redraw can observe it.
 --- @param opts table
 local function validate(opts)
+  bool("enabled", opts.enabled)
+  vim.validate("vertical", opts.vertical, "table")
+  bool("vertical.enabled", opts.vertical.enabled)
+  int("vertical.width", opts.vertical.width, 1)
+  glyph("vertical.char", opts.vertical.char)
+  glyph("vertical.track_char", opts.vertical.track_char)
+
+  vim.validate("horizontal", opts.horizontal, "table")
+  bool("horizontal.enabled", opts.horizontal.enabled)
+  int("horizontal.height", opts.horizontal.height, 1)
+  glyph("horizontal.char", opts.horizontal.char)
+  glyph("horizontal.track_char", opts.horizontal.track_char)
+
   vim.validate("visibility", opts.visibility, function(v)
     return v == "auto" or v == "always" or v == "hover"
   end, 'one of "auto", "always", "hover"')
-  vim.validate("hide_delay", opts.hide_delay, "number")
-  vim.validate("winblend", opts.winblend, function(v)
-    return type(v) == "number" and v >= 0 and v <= 100
-  end, "a number between 0 and 100")
-  vim.validate("zindex", opts.zindex, "number")
-  vim.validate("mouse", opts.mouse, "boolean")
+  int("hide_delay", opts.hide_delay, 0)
+  vim.validate("winblend", opts.winblend, percent, "an integer between 0 and 100")
+  int("zindex", opts.zindex, 1)
+  bool("mouse", opts.mouse)
+
+  int("min_width", opts.min_width, 1)
+  int("min_height", opts.min_height, 1)
+  int("exact_measure_max_lines", opts.exact_measure_max_lines, 0)
+  vim.validate("excluded_filetypes", opts.excluded_filetypes, string_list, "a list of strings")
+  vim.validate("excluded_buftypes", opts.excluded_buftypes, string_list, "a list of strings")
+
   vim.validate("minimap", opts.minimap, "table")
-  vim.validate("minimap.width", opts.minimap.width, function(v)
-    return type(v) == "number" and v >= 2
-  end, "a number >= 2")
-  vim.validate("minimap.colors", opts.minimap.colors, "boolean")
-  vim.validate("minimap.columns_per_dot", opts.minimap.columns_per_dot, function(v)
-    return type(v) == "number" and v >= 1
-  end, "a number >= 1")
+  bool("minimap.enabled", opts.minimap.enabled)
+  int("minimap.width", opts.minimap.width, 2)
+  int("minimap.columns_per_dot", opts.minimap.columns_per_dot, 1)
+  bool("minimap.colors", opts.minimap.colors)
+  int("minimap.min_window_width", opts.minimap.min_window_width, 1)
+  vim.validate("minimap.excluded_filetypes", opts.minimap.excluded_filetypes, string_list, "a list of strings")
   vim.validate("minimap.enabled_for", opts.minimap.enabled_for, "function", true)
+  bool("minimap.cursor", opts.minimap.cursor)
   vim.validate("minimap.dodge", opts.minimap.dodge, "table")
+  bool("minimap.dodge.margin", opts.minimap.dodge.margin)
+  bool("minimap.dodge.hide", opts.minimap.dodge.hide)
+  bool("minimap.git", opts.minimap.git)
+  glyph("minimap.git_char", opts.minimap.git_char)
+  vim.validate("minimap.winblend", opts.minimap.winblend, percent, "an integer between 0 and 100")
+  bool("minimap.autohide", opts.minimap.autohide)
+
   vim.validate("explorer", opts.explorer, "table")
-  vim.validate("explorer.horizontal", opts.explorer.horizontal, "boolean")
+  bool("explorer.enabled", opts.explorer.enabled)
+  vim.validate("explorer.filetypes", opts.explorer.filetypes, string_list, "a list of strings")
+  bool("explorer.snacks", opts.explorer.snacks)
+  bool("explorer.horizontal", opts.explorer.horizontal)
+  int("explorer.min_width", opts.explorer.min_width, 1)
+
   vim.validate("marks", opts.marks, "table")
+  bool("marks.enabled", opts.marks.enabled)
   for _, source in ipairs(mark_sources) do
     vim.validate("marks." .. source, opts.marks[source], "table")
-    vim.validate("marks." .. source .. ".char", opts.marks[source].char, function(v)
-      return type(v) == "string" and vim.fn.strdisplaywidth(v) == 1
-    end, "a single-cell string")
+    bool("marks." .. source .. ".enabled", opts.marks[source].enabled)
+    glyph("marks." .. source .. ".char", opts.marks[source].char)
+  end
+  vim.validate(
+    "marks.diagnostics.severity",
+    opts.marks.diagnostics.severity,
+    severity_filter,
+    "a diagnostic severity, a non-empty list of severities, { min = severity }, { max = severity }, or nil"
+  )
+  int("marks.git.max_lines", opts.marks.git.max_lines, 0)
+  int("marks.git.debounce", opts.marks.git.debounce, 0)
+  vim.validate("marks.scope.node_types", opts.marks.scope.node_types, string_list, "a list of strings")
+
+  local effective_min_width = math.max(opts.min_width, opts.minimap.min_window_width)
+  local reserved = opts.minimap.width + (opts.vertical.enabled and opts.vertical.width or 0)
+  if opts.minimap.enabled and effective_min_width <= reserved then
+    error(
+      ("minimap.width: minimap (%d) and vertical bar (%d) must fit inside eligible windows (minimum %d)"):format(
+        opts.minimap.width,
+        opts.vertical.enabled and opts.vertical.width or 0,
+        effective_min_width
+      )
+    )
   end
 
   if opts.visibility == "hover" and not vim.o.mousemoveevent then
@@ -229,6 +346,7 @@ end
 --- @param opts table|nil
 --- @return table  the merged, validated options
 function M.setup(opts)
+  vim.validate("opts", opts, "table", true)
   opts = vim.deepcopy(opts or {})
   for _, key in ipairs(sections) do
     expand(opts, key)
@@ -238,8 +356,9 @@ function M.setup(opts)
       expand(opts.marks, key)
     end
   end
-  M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
-  validate(M.options)
+  local merged = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
+  validate(merged)
+  M.options = merged
   return M.options
 end
 

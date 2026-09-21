@@ -14,6 +14,7 @@ local IGNORE = { call = true, invocation = true, arguments = true, parameters = 
 
 --- @type table<string, boolean>
 local is_scope = {}
+local wanted = {}
 --- @type table|nil  the `node_types` list `is_scope` was built from
 local built_from = nil
 
@@ -23,16 +24,16 @@ local built_from = nil
 local function matches(type)
   local words = config.options.marks.scope.node_types
   if built_from ~= words then
-    built_from, is_scope = words, {}
+    built_from, is_scope, wanted = words, {}, {}
+    for _, word in ipairs(words) do
+      wanted[word] = true
+    end
   end
   local cached = is_scope[type]
   if cached ~= nil then
     return cached
   end
-  local wanted, found = {}, false
-  for _, w in ipairs(words) do
-    wanted[w] = true
-  end
+  local found = false
   for word in type:gmatch("[^_]+") do
     if IGNORE[word] then
       found = false
@@ -91,13 +92,14 @@ function M.get(buf, _, win)
   return {
     { first = first + 1, last = first + 1, kind = "scope" },
     { first = last + 1, last = last + 1, kind = "scope" },
-  }, first .. "-" .. last
+  },
+    first .. "-" .. last
 end
 
 function M.forget(_) end
 
 function M.reset()
-  is_scope, built_from = {}, nil
+  is_scope, wanted, built_from = {}, {}, nil
 end
 
 return M

@@ -17,12 +17,26 @@ local M = {}
 --- it did before this plugin loaded.
 --- @type table<string, table|false>
 local previous = {}
+--- Callbacks installed by us, used to avoid deleting a mapping that another
+--- plugin or the user replaced while scroll.nvim was enabled.
+--- @type table<string, function>
+local installed = {}
 
 --- @type { win: integer, orientation: string, grab: integer }|nil
 local drag = nil
 
+local function global_mapping(mode, lhs)
+  for _, mapping in ipairs(vim.api.nvim_get_keymap(mode)) do
+    if mapping.lhs == lhs then
+      return mapping
+    end
+  end
+end
+
 local function capture(mode, lhs)
-  local existing = vim.fn.maparg(lhs, mode, false, true)
+  -- A buffer-local mapping is not replaced by our global mapping, and must
+  -- not be mistaken for the global definition that should be restored.
+  local existing = global_mapping(mode, lhs)
   previous[mode .. lhs] = (existing and next(existing)) and existing or false
 end
 
@@ -30,9 +44,19 @@ end
 local function fallthrough(mode, lhs)
   local prev = previous[mode .. lhs]
   if prev and prev.callback then
-    prev.callback()
+    local result = prev.callback()
+    if prev.expr == 1 and type(result) == "string" and result ~= "" then
+      vim.api.nvim_feedkeys(vim.keycode(result), prev.noremap == 1 and "n" or "m", false)
+    end
   elseif prev and prev.rhs and prev.rhs ~= "" then
-    vim.api.nvim_feedkeys(vim.keycode(prev.rhs), prev.noremap == 1 and "n" or "m", false)
+    local rhs = prev.rhs
+    if prev.expr == 1 then
+      local ok, result = pcall(vim.api.nvim_eval, rhs)
+      rhs = ok and type(result) == "string" and result or ""
+    end
+    if rhs ~= "" then
+      vim.api.nvim_feedkeys(vim.keycode(rhs), prev.noremap == 1 and "n" or "m", false)
+    end
   else
     -- No prior mapping: replay the builtin. "n" means the keys are not
     -- remapped, so this does not re-enter our own mapping. Neovim carries the
@@ -457,7 +481,10 @@ local function watch_wheel(key, typed)
   return ok and swallow or nil
 end
 
-local MODES = { "n", "v", "s", "o", "i" }
+-- Use "x" and "s" separately. "v" addresses both at once, so installing an
+-- additional select-mode map would otherwise overwrite what was captured for
+-- visual mode and make exact restoration impossible.
+local MODES = { "n", "x", "s", "o", "i" }
 
 local handlers = {
   ["<LeftMouse>"] = on_press,
@@ -471,23 +498,27 @@ function M.enable()
   for lhs, handler in pairs(handlers) do
     for _, mode in ipairs(MODES) do
       capture(mode, lhs)
-      vim.keymap.set(mode, lhs, function()
+      local callback = function()
         local ok, consumed = pcall(handler)
         if ok and consumed then
           return
         end
         fallthrough(mode, lhs)
-      end, { silent = true, desc = "scroll.nvim: " .. lhs })
+      end
+      installed[mode .. lhs] = callback
+      vim.keymap.set(mode, lhs, callback, { silent = true, desc = "scroll.nvim: " .. lhs })
     end
   end
 
   if config.options.visibility == "hover" and vim.o.mousemoveevent then
-    for _, mode in ipairs({ "n", "v", "i" }) do
+    for _, mode in ipairs({ "n", "x", "i" }) do
       capture(mode, "<MouseMove>")
-      vim.keymap.set(mode, "<MouseMove>", function()
+      local callback = function()
         pcall(on_move)
         fallthrough(mode, "<MouseMove>")
-      end, { silent = true, desc = "scroll.nvim: hover" })
+      end
+      installed[mode .. "<MouseMove>"] = callback
+      vim.keymap.set(mode, "<MouseMove>", callback, { silent = true, desc = "scroll.nvim: hover" })
     end
   end
 end
@@ -495,11 +526,18 @@ end
 function M.disable()
   vim.on_key(nil, wheel_watch_ns)
   drag = nil
-  for key in pairs(previous) do
+  for key, prev in pairs(previous) do
     local mode, lhs = key:sub(1, 1), key:sub(2)
-    pcall(vim.keymap.del, mode, lhs)
+    local current = global_mapping(mode, lhs)
+    if current and current.callback == installed[key] then
+      pcall(vim.keymap.del, mode, lhs)
+      if prev then
+        pcall(vim.fn.mapset, mode, false, prev)
+      end
+    end
   end
   previous = {}
+  installed = {}
 end
 
 -- Exposed for tests: exercising these through real mouse events needs a UI.

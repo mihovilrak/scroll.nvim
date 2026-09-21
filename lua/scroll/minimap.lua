@@ -321,14 +321,15 @@ end
 
 --- Where the minimap goes in `win`, or nil when it should not be drawn.
 --- @param info table  getwininfo() entry
+--- @param kind string|nil  already classified window kind
 --- @return { col: integer, width: integer, offset: integer, view_top: integer, view_bottom: integer }|nil
-function M.compute(win, info)
+function M.compute(win, info, kind)
   local opts = config.options
   local mm = opts.minimap
   if not mm.enabled or info.width < mm.min_window_width or info.height < 1 then
     return nil
   end
-  if not util.minimap_eligible(win) then
+  if not util.minimap_eligible(win, kind) then
     return nil
   end
   local right = opts.vertical.enabled and opts.vertical.width or 0

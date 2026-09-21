@@ -85,8 +85,7 @@ function M.get(buf, on_update)
     return {}, "off"
   end
   local pat = effective_pattern()
-  local ok, regex = pcall(vim.regex, pat or "")
-  if not pat or not ok then
+  if not pat then
     return {}, "off"
   end
 
@@ -102,6 +101,13 @@ function M.get(buf, on_update)
   end
 
   stop_scan(entry)
+  local ok, regex = pcall(vim.regex, pat)
+  if not ok then
+    -- Remember invalid patterns as an empty result. Otherwise every scroll
+    -- recompiles the same broken expression before the cache can answer.
+    publish(entry, key, {})
+    return entry.ranges, entry.version
+  end
   local line_count = vim.api.nvim_buf_line_count(buf)
   if line_count <= SYNC_MAX_LINES then
     local ranges = {}

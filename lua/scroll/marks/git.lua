@@ -148,7 +148,14 @@ function M.get(buf, on_update)
   local entry = entry_for(buf)
 
   if entry.gitsigns then
-    return entry.ranges, entry.version
+    -- The buffer marker is the cheap attachment check. If it disappeared,
+    -- drop the old hunks and let the built-in fallback take over.
+    if package.loaded.gitsigns and vim.b[buf].gitsigns_status_dict then
+      return entry.ranges, entry.version
+    end
+    entry.gitsigns = nil
+    entry.tick = nil
+    publish(entry, {})
   end
   local ranges = from_gitsigns(buf)
   if ranges then
@@ -156,6 +163,22 @@ function M.get(buf, on_update)
     entry.gitsigns = true
     publish(entry, ranges)
     return entry.ranges, entry.version
+  end
+
+  local opts = config.options.marks.git
+  local tick = vim.api.nvim_buf_get_changedtick(buf)
+  if vim.api.nvim_buf_line_count(buf) > opts.max_lines then
+    stop_timer(entry)
+    entry.tick = tick
+    entry.over_limit = true
+    if #entry.ranges > 0 then
+      publish(entry, {})
+    end
+    return entry.ranges, entry.version
+  end
+  if entry.over_limit then
+    entry.over_limit = nil
+    entry.tick = nil
   end
 
   if entry.base == nil then
@@ -168,9 +191,7 @@ function M.get(buf, on_update)
     return entry.ranges, entry.version
   end
 
-  local opts = config.options.marks.git
-  local tick = vim.api.nvim_buf_get_changedtick(buf)
-  if entry.tick == tick or vim.api.nvim_buf_line_count(buf) > opts.max_lines then
+  if entry.tick == tick then
     return entry.ranges, entry.version
   end
 

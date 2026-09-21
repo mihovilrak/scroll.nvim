@@ -291,13 +291,14 @@ Run the tests with:
 make test
 ```
 
-Seven suites, all headless and independent of your config:
+Eight suites, all headless and independent of your config:
 
 - `geometry_spec`: the pure thumb math, including an exhaustive sweep asserting the thumb never
   leaves its track and never inverts.
 - `measure_spec`: incremental measurement against ground truth on wrapped and folded buffers, plus
   a performance regression guard.
 - `width_spec`: the document-width cache and its background scan.
+- `config_spec`: complete public-option validation, including cross-field constraints.
 - `integration_spec`: real windows and floats: splits sharing a buffer, winbar offsets, gutters,
   folds, floats, excluded buffers, explorer sidebars (including a stand-in Snacks picker).
 - `ruler_spec`: mark placement, priority and lanes, each source (the git fallback runs against a
