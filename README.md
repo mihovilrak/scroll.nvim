@@ -10,9 +10,7 @@ across the whole buffer, and an optional **minimap** shows the buffer's shape in
 with a git change gutter. File explorer sidebars (Snacks, neo-tree, nvim-tree) can get scrollbars
 too.
 
-<!-- TODO: replace with the demo GIF URL, then uncomment
-![scroll.nvim demo: scrollbars, ruler marks and minimap](https://github.com/user-attachments/assets/REPLACE-ME)
--->
+![scroll.nvim demo: scrollbars, ruler marks and minimap](https://github.com/user-attachments/assets/6177ad2c-d058-4a51-be8b-315d2acf2d38)
 
 Neovim has no built-in scrollbar, and while `nvim-scrollview` covers the vertical case, nothing
 provides a horizontal one. With `wrap` off, the only cue that a line runs past the right edge is the
@@ -37,7 +35,7 @@ To change options, add `opts`; lazy.nvim passes them to `require("scroll").setup
 ```lua
 return {
   "mihovilrak/scroll.nvim",
-  opts = { minimap = true },
+  opts = { minimap = true, explorer = true },
 }
 ```
 
