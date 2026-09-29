@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- scroll.nvim: a window of code with a vertical scrollbar + overview ruler and a horizontal bar -->
+  <rect width="256" height="256" rx="48" fill="#1e1e2e"/>
+
+  <!-- code lines; the long one runs past the window edge -->
+  <clipPath id="view"><rect x="36" y="36" width="160" height="160"/></clipPath>
+  <g clip-path="url(#view)">
+    <rect x="40"  y="44"  width="56"  height="12" rx="6" fill="#cba6f7"/>
+    <rect x="104" y="44"  width="48"  height="12" rx="6" fill="#89b4fa"/>
+    <rect x="60"  y="68"  width="96"  height="12" rx="6" fill="#cdd6f4" fill-opacity="0.55"/>
+    <rect x="60"  y="92"  width="40"  height="12" rx="6" fill="#fab387"/>
+    <rect x="108" y="92"  width="120" height="12" rx="6" fill="#a6e3a1"/>
+    <rect x="80"  y="116" width="72"  height="12" rx="6" fill="#89b4fa"/>
+    <rect x="60"  y="140" width="84"  height="12" rx="6" fill="#cdd6f4" fill-opacity="0.55"/>
+    <rect x="40"  y="164" width="36"  height="12" rx="6" fill="#cba6f7"/>
+  </g>
+
+  <!-- vertical track and thumb -->
+  <rect x="208" y="36" width="12" height="160" rx="6" fill="#313244"/>
+  <rect x="208" y="52" width="12" height="64"  rx="6" fill="#9399b2"/>
+  <!-- ruler marks: git add, warning, error -->
+  <rect x="204" y="96"  width="20" height="5" rx="2.5" fill="#a6e3a1"/>
+  <rect x="204" y="144" width="20" height="5" rx="2.5" fill="#f9e2af"/>
+  <rect x="204" y="172" width="20" height="5" rx="2.5" fill="#f38ba8"/>
+
+  <!-- horizontal track and thumb -->
+  <rect x="36" y="208" width="160" height="12" rx="6" fill="#313244"/>
+  <rect x="52" y="208" width="88"  height="12" rx="6" fill="#9399b2"/>
+</svg>
