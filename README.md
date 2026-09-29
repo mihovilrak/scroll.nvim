@@ -1,8 +1,7 @@
-<p align="center">
-  <img src=".github/logo.svg" width="128" alt="scroll.nvim logo">
-</p>
-
-# scroll.nvim
+<h1 align="center">
+  <img src=".github/logo.svg" width="96" alt=""><br>
+  scroll.nvim
+</h1>
 
 VS Code-style scrollbars for Neovim, **vertical and horizontal** overlaid on the window edges,
 draggable with the mouse, and auto-hiding when idle. The vertical track doubles as an **overview

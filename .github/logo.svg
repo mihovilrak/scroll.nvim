@@ -19,7 +19,7 @@
   <rect x="208" y="36" width="12" height="160" rx="6" fill="#313244"/>
   <rect x="208" y="52" width="12" height="64"  rx="6" fill="#9399b2"/>
   <!-- ruler marks: git add, warning, error -->
-  <rect x="204" y="96"  width="20" height="5" rx="2.5" fill="#a6e3a1"/>
+  <rect x="204" y="128" width="20" height="5" rx="2.5" fill="#a6e3a1"/>
   <rect x="204" y="144" width="20" height="5" rx="2.5" fill="#f9e2af"/>
   <rect x="204" y="172" width="20" height="5" rx="2.5" fill="#f38ba8"/>
 
