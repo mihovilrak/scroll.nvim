@@ -175,6 +175,12 @@ zindex ~
 mouse ~
     Boolean, default `true`. Click-to-jump and dragging.
 
+touch ~
+    `"auto"` (default), `true` or `false`. For terminals that send a finger
+    drag as wheel events instead of a mouse drag, as Termux does: a swipe on
+    the vertical bar or the minimap moves the thumb the way the finger goes,
+    one row per text row swiped. `"auto"` turns it on inside Termux.
+
                                                       *scroll-option-explorer*
 explorer ~
     Scrollbars for file explorer sidebars, without marks or a minimap.
