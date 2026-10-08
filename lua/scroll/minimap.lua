@@ -515,7 +515,7 @@ function M.bar_opts(win, info, map, on_update)
     cursor_row = math.floor((lnum - 1) / M.LINES_PER_ROW) - map.offset
   end
   return {
-    row = info.winbar,
+    row = 0,
     col = map.col,
     width = map.width,
     height = info.height,

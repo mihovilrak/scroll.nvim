@@ -186,15 +186,32 @@ t.describe("one buffer in two splits gets independent bars", function()
   vim.cmd("silent! only")
 end)
 
-t.describe("winbar shifts the track down", function()
+t.describe("a winbar keeps the bars off the statusline", function()
+  -- relative='win' rows count from the first text row, below the winbar, so
+  -- adding the winbar height again pushed every float onto the statusline.
+  scroll.setup({ visibility = "always", mouse = false, minimap = true })
   vim.cmd("silent! only")
-  fill(500)
+  fill(500, string.rep("w", 300))
   local win = vim.api.nvim_get_current_win()
+  vim.wo[win].wrap = false
   vim.wo[win].winbar = "%f"
   vim.cmd("normal! gg")
   scroll.refresh()
-  t.eq(tracks(win).vertical.row, 1, "a winbar pushes the track off row 0")
+
+  local height = vim.fn.getwininfo(win)[1].height
+  local bars = tracks(win)
+  for _, orientation in ipairs({ "vertical", "horizontal", "minimap" }) do
+    local cfg = bars[orientation]
+    t.check(cfg ~= nil, orientation .. " is drawn")
+    if cfg then
+      t.check(cfg.row >= 0, orientation .. " starts in the text area")
+      t.check(cfg.row + cfg.height <= height, orientation .. " ends above the statusline")
+    end
+  end
+  t.eq(bars.vertical.row, 0, "the vertical track starts on the first text row")
+  t.eq(bars.horizontal.row, height - 1, "the horizontal track sits on the last text row")
   vim.wo[win].winbar = ""
+  scroll.setup({ visibility = "always", mouse = false })
 end)
 
 t.describe("floating windows get no bars", function()
