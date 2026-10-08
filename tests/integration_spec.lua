@@ -514,6 +514,35 @@ t.describe("a wheel scroll over the Snacks list redraws without waiting on SafeS
   scroll.setup({ visibility = "always", mouse = false })
 end)
 
+t.describe("touch swipes on the bar move the thumb with the finger", function()
+  vim.cmd("silent! only")
+  fill(500)
+  local win = vim.api.nvim_get_current_win()
+  scroll.setup({ visibility = "always", mouse = true, minimap = true, touch = true })
+  scroll.refresh()
+  local mouse = require("scroll.mouse")
+
+  -- A finger moving down arrives from Termux as `<ScrollWheelUp>`.
+  local before = thumbs(win).vertical.pos
+  mouse._apply_swipe("up", win, "vertical")
+  scroll.refresh()
+  t.eq(thumbs(win).vertical.pos, before + 1, "a downward swipe moves the thumb down one row")
+  mouse._apply_swipe("down", win, "vertical")
+  scroll.refresh()
+  t.eq(thumbs(win).vertical.pos, before, "and an upward one moves it back")
+
+  local top = vim.fn.getwininfo(win)[1].topline
+  mouse._apply_swipe("up", win, "minimap")
+  t.eq(
+    vim.fn.getwininfo(win)[1].topline,
+    top + require("scroll.minimap").LINES_PER_ROW,
+    "a downward swipe on the minimap moves the view one map row down"
+  )
+
+  t.check(not pcall(scroll.setup, { touch = "yes" }), "touch rejects anything but a boolean or \"auto\"")
+  scroll.setup({ visibility = "always", mouse = false })
+end)
+
 t.describe("the wheel is watched, not mapped", function()
   -- Load-bearing: a `<ScrollWheelUp>` mapping breaks scrolling inside the
   -- Snacks picker list even when it never fires, so the wheel has to stay

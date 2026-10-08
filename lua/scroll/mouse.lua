@@ -447,6 +447,44 @@ for lhs, dir in pairs({
 end
 local wheel_watch_ns = vim.api.nvim_create_namespace("scroll.nvim.wheel_watch")
 
+local function touch_enabled()
+  local touch = config.options.touch
+  if touch == "auto" then
+    return vim.env.TERMUX_VERSION ~= nil
+  end
+  return touch
+end
+
+--- One wheel step of a finger drag on `orientation`'s bar of `win`.
+---
+--- Termux sends no press or motion for a finger drag, only a wheel event per
+--- text row the finger travels, all reported at the cell the finger first
+--- touched (`TerminalView.sendMouseEventCode`). The finger's position is
+--- therefore unknown, so the thumb moves relative to where it is now rather
+--- than to the pointer. A finger moving down is `<ScrollWheelUp>`, as for
+--- natural scrolling of the text; the thumb follows the finger.
+--- @param dir "up"|"down"
+--- @param win integer
+--- @param orientation "vertical"|"minimap"
+local function apply_swipe(dir, win, orientation)
+  if not vim.api.nvim_win_is_valid(win) then
+    return
+  end
+  local step = dir == "up" and 1 or -1
+  local computed = render.compute(win)
+  if orientation == "minimap" then
+    -- A map row stands for a fixed number of lines, so moving the viewport
+    -- one row along the map is moving `topline` that many lines.
+    local info = computed.info
+    local buf = vim.api.nvim_win_get_buf(win)
+    local last = math.max(1, vim.api.nvim_buf_line_count(buf) - (info.botline - info.topline))
+    set_topline(win, math.max(1, math.min(info.topline + step * minimap.LINES_PER_ROW, last)))
+    pcall(vim.api.nvim__redraw, { win = win, valid = true, flush = true })
+  elseif computed.vertical then
+    scroll_to(win, "vertical", computed.vertical.pos + step, 0)
+  end
+end
+
 --- @return string|nil  `""` to swallow the event, nil to leave it to Nvim
 local function watch_wheel(key, typed)
   local dir = WHEEL_KEYS[typed or key]
@@ -461,8 +499,15 @@ local function watch_wheel(key, typed)
       -- Deferred: an `on_key` callback runs before the key is dispatched, and
       -- scrolling from inside it would fight whatever Nvim does next.
       local win = at.win
+      local swipe = (orientation == "vertical" or orientation == "minimap")
+        and (dir == "up" or dir == "down")
+        and touch_enabled()
       vim.schedule(function()
-        pcall(apply_wheel, dir, win)
+        if swipe then
+          pcall(apply_swipe, dir, win, orientation)
+        else
+          pcall(apply_wheel, dir, win)
+        end
       end)
       return ""
     end
@@ -546,6 +591,7 @@ M._set_leftcol = set_leftcol
 M._minimap_jump = minimap_jump
 M._watch_wheel = watch_wheel
 M._apply_wheel = apply_wheel
+M._apply_swipe = apply_swipe
 M._scroll_to = scroll_to
 
 return M
