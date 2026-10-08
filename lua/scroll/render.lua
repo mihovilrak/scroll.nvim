@@ -172,7 +172,8 @@ local function draw_vertical(win, entry, computed, hovered)
   entry.vertical = entry.vertical or Bar.new()
   entry.vertical:update(win, {
     orientation = "vertical",
-    row = info.winbar, -- relative='win' row 0 is the winbar row
+    -- relative='win' row 0 is the first text row, already below any winbar.
+    row = 0,
     col = info.width - opts.vertical.width,
     width = opts.vertical.width,
     height = info.height,
@@ -207,7 +208,7 @@ local function draw_horizontal(win, entry, computed, hovered)
   entry.horizontal = entry.horizontal or Bar.new()
   entry.horizontal:update(win, {
     orientation = "horizontal",
-    row = info.winbar + info.height - opts.horizontal.height,
+    row = info.height - opts.horizontal.height,
     col = h.textoff,
     width = h.track,
     height = opts.horizontal.height,

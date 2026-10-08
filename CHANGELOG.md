@@ -5,7 +5,17 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options. Such changes are listed under **Changed**.
 
-## [0.5.0]
+## [0.5.1] - 2026-10-09
+
+### Fixed
+
+- With a `'winbar'`, the vertical bar, the horizontal bar and the minimap no longer cover the
+  statusline ([#3](https://github.com/mihovilrak/scroll.nvim/issues/3)). A `relative = "win"` float
+  already counts its rows from the first text row below the winbar, so adding the winbar height on
+  top pushed every bar one row down: the vertical bar and the minimap ran over the statusline and
+  the horizontal bar was drawn on it.
+
+## [0.5.0] - 2026-10-08
 
 ### Added
 
@@ -174,7 +184,9 @@ First release.
 - A box-drawing joint (`┘`) where the vertical and horizontal tracks meet.
 - `:help scroll`, headless test suites and CI on Neovim 0.11, stable and nightly.
 
-[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/mihovilrak/scroll.nvim/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.2...v0.4.0
