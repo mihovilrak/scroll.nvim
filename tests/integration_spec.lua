@@ -539,7 +539,7 @@ t.describe("touch swipes on the bar move the thumb with the finger", function()
     "a downward swipe on the minimap moves the view one map row down"
   )
 
-  t.check(not pcall(scroll.setup, { touch = "yes" }), "touch rejects anything but a boolean or \"auto\"")
+  t.check(not pcall(scroll.setup, { touch = "yes" }), 'touch rejects anything but a boolean or "auto"')
   scroll.setup({ visibility = "always", mouse = false })
 end)
 
