@@ -143,6 +143,13 @@ M.defaults = {
 
   mouse = true,
 
+  --- Touch screens that turn a finger drag into wheel events rather than a
+  --- held-button drag, as Termux does. Over a vertical bar or the minimap,
+  --- each wheel step then moves the thumb one row the way the finger went,
+  --- instead of scrolling the content the opposite way.
+  --- "auto" enables it inside Termux; true / false force it.
+  touch = "auto",
+
   --- Scrollbar for file explorer sidebars. neo-tree and nvim-tree are ordinary
   --- windows and only need their filetype listed; the Snacks explorer draws
   --- only its visible rows, so it has its own adapter.
@@ -267,6 +274,9 @@ local function validate(opts)
   vim.validate("winblend", opts.winblend, percent, "an integer between 0 and 100")
   int("zindex", opts.zindex, 1)
   bool("mouse", opts.mouse)
+  vim.validate("touch", opts.touch, function(v)
+    return v == "auto" or type(v) == "boolean"
+  end, 'true, false or "auto"')
 
   int("min_width", opts.min_width, 1)
   int("min_height", opts.min_height, 1)

@@ -64,6 +64,12 @@ git clone https://github.com/mihovilrak/scroll.nvim "$env:LOCALAPPDATA\nvim-data
 
 Mouse support needs `vim.o.mouse` to include normal mode (`"a"`, Neovim's default).
 
+**Termux / touch screens:** Termux never reports a finger drag as a mouse drag; it sends wheel
+events pinned to where the finger first touched. With `touch` on (automatic inside Termux), swiping
+on the vertical bar or the minimap moves the thumb the way your finger goes, one row per text row
+swiped, and tapping jumps as a click does. Horizontal swipes produce no events in Termux, so the
+horizontal bar can be tapped but not swiped.
+
 ## Configuration
 
 `setup()` takes the table below; anything you omit keeps its default, and calling it again replaces
@@ -163,6 +169,7 @@ require("scroll").setup({
   winblend = 30,         -- 0 = opaque, 100 = invisible
   zindex = 40,           -- below completion popups, above window text
   mouse = true,          -- click-to-jump and thumb dragging
+  touch = "auto",        -- finger drags on the bar/minimap (Termux); true / false to force
 
   excluded_filetypes = { "help", "qf", "NvimTree", "neo-tree", "TelescopePrompt", "lazy", "mason" },
   excluded_buftypes = { "terminal", "prompt", "nofile", "quickfix" },

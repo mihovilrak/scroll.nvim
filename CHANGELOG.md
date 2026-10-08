@@ -5,7 +5,20 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options. Such changes are listed under **Changed**.
 
-## 0.4.2 - 2026-09-21
+## [0.5.0]
+
+### Added
+
+- `touch = "auto" | true | false` (`"auto"` by default): finger dragging on the vertical bar and the
+  minimap in Termux ([#2](https://github.com/mihovilrak/scroll.nvim/issues/2)). Termux never sends
+  a mouse drag for a finger. It sends one wheel event per text row the finger travels, all reported
+  at the cell the finger first touched. With `touch` on, each of those events over the vertical bar
+  moves the thumb one row the way the finger went, and over the minimap moves the view one map row.
+  Before, the content scrolled the opposite way. `"auto"` turns it on when `$TERMUX_VERSION` is
+  set. Horizontal swipes send nothing in Termux, so the horizontal bar can only be tapped.
+- `.github/FUNDING.yml`, for the GitHub Sponsors button.
+
+## [0.4.2] - 2026-09-21
 
 ### Fixed
 
@@ -161,7 +174,8 @@ First release.
 - A box-drawing joint (`┘`) where the vertical and horizontal tracks meet.
 - `:help scroll`, headless test suites and CI on Neovim 0.11, stable and nightly.
 
-[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/mihovilrak/scroll.nvim/compare/v0.3.1...v0.3.2
