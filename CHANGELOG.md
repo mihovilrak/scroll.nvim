@@ -184,6 +184,7 @@ First release.
 - A box-drawing joint (`┘`) where the vertical and horizontal tracks meet.
 - `:help scroll`, headless test suites and CI on Neovim 0.11, stable and nightly.
 
+[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/main...nenikitov:scroll.nvim:main
 [Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.5.1...HEAD
 [0.5.1]: https://github.com/mihovilrak/scroll.nvim/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.2...v0.5.0

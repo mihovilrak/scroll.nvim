@@ -176,6 +176,7 @@ function Bar:update(parent, opts)
     zindex = opts.zindex,
     style = "minimal",
     hide = false,
+    border = "none",
   }
 
   if self:is_valid() then
