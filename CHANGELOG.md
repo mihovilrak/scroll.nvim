@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options. Such changes are listed under **Changed**.
 
-## [Unreleased]
+## [0.5.2] - 2026-11-05
 
 ### Fixed
 
@@ -193,7 +193,8 @@ First release.
 - A box-drawing joint (`┘`) where the vertical and horizontal tracks meet.
 - `:help scroll`, headless test suites and CI on Neovim 0.11, stable and nightly.
 
-[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/mihovilrak/scroll.nvim/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/mihovilrak/scroll.nvim/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/mihovilrak/scroll.nvim/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/mihovilrak/scroll.nvim/compare/v0.4.1...v0.4.2
