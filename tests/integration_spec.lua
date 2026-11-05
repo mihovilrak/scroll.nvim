@@ -690,8 +690,8 @@ t.describe("mouse mappings survive enable, misses, disable, and setup", function
 end)
 
 t.describe("bars ignore global `winborder`", function()
-  local winborder_old = vim.opt.winborder
-  vim.opt.winborder = "rounded"
+  local winborder_old = vim.o.winborder
+  vim.o.winborder = "rounded"
 
   scroll.disable()
   scroll.setup({ visibility = "always", minimap = true })
@@ -712,7 +712,7 @@ t.describe("bars ignore global `winborder`", function()
     end
   end
 
-  vim.opt.winborder = winborder_old
+  vim.o.winborder = winborder_old
   scroll.setup({ visibility = "always", mouse = false })
 end)
 
