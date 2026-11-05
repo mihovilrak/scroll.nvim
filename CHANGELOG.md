@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0.0, a minor version may change
 defaults or options. Such changes are listed under **Changed**.
 
+## [Unreleased]
+
+### Fixed
+
+- With `'winborder'` set, the vertical bar, the horizontal bar and the minimap no longer get a
+  border ([#6](https://github.com/mihovilrak/scroll.nvim/pull/6)). A float with no `border` of its
+  own takes `'winborder'`, so every bar was drawn inside a border that took extra space and made the
+  bars overlap. The bars now set `border = "none"`.
+
 ## [0.5.1] - 2026-10-09
 
 ### Fixed

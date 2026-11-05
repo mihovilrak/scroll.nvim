@@ -689,4 +689,31 @@ t.describe("mouse mappings survive enable, misses, disable, and setup", function
   scroll.setup({ visibility = "always", mouse = false })
 end)
 
+t.describe("bars ignore global `winborder`", function()
+  local winborder_old = vim.o.winborder
+  vim.o.winborder = "rounded"
+
+  scroll.disable()
+  scroll.setup({ visibility = "always", minimap = true })
+
+  vim.cmd("silent! only")
+  fill(500, string.rep("w", 300))
+  local win = vim.api.nvim_get_current_win()
+  vim.wo[win].wrap = false
+  scroll.refresh()
+
+  local bars = tracks(win)
+  for _, orientation in ipairs({ "vertical", "horizontal", "minimap" }) do
+    local cfg = bars[orientation]
+    t.check(cfg ~= nil, orientation .. " is drawn")
+    if cfg then
+      -- 0.11 reports no border as `nil`, 0.12+ as `"none"`
+      t.check(cfg.border == nil or cfg.border == "none", orientation .. " has no border")
+    end
+  end
+
+  vim.o.winborder = winborder_old
+  scroll.setup({ visibility = "always", mouse = false })
+end)
+
 t.finish("integration")
